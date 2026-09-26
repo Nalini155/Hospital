@@ -334,7 +334,8 @@ function CodeStep({
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="••••••"
+              placeholder="6-digit code"
+              aria-label="Google verification code"
               className="h-12 pl-10 text-center font-mono text-lg tracking-[0.4em]"
               value={code}
               onChange={(e) => handleChange(e.target.value)}

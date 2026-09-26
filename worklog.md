@@ -414,3 +414,42 @@ Work Log:
 Stage Summary:
 - Admin Dashboard is fully implemented and verified. Admin users see an "Admin" item in the sidebar (ShieldCheck icon, only visible to ADMIN role) that navigates to a complete admin view with User Management (list + role change + deactivate/reactivate), System Overview (user counts, data stats, forecast runs, last refresh), Data Management (regenerate button), and an Activity Log (audited login/signup/role-change/deactivate/regenerate actions with timestamps).
 - Access control is enforced both client-side (sidebar only shows Admin for ADMIN role; AdminView redirects non-admins to overview) and backend (requireAdmin guard returns 401/403 on all /api/admin/* endpoints). Staff and Reception users cannot see the Admin nav or access admin data.
+
+---
+Task ID: 15 (Google flow + hero enhancement)
+Agent: orchestrator (main)
+Task: Enhanced Google sign-in (account chooser → email code → login) + more Get Started content
+
+Work Log:
+- Built multi-step Google sign-in backend (src/lib/google-flow.ts + 3 routes):
+  - /api/auth/google/initiate (GET): returns 3 mock Google accounts (Dr. Admin/ADMIN, Reception Desk/RECEPTION, Google User/STAFF).
+  - /api/auth/google/send-code (POST): generates a 6-digit code, stores in-memory with 10-min TTL, returns demoCode (so the UI can display it since the sandbox can't send real email). Rejects emails not in the mock list (403).
+  - /api/auth/google/verify (POST): verifies the code (single-use, consumes on success), find-or-creates a CareFlow user for that email, issues a real session token + cookie, logs 'login' activity. Returns {user, token}.
+- Built GoogleSignInFlow overlay component (src/components/auth/google-sign-in-flow.tsx):
+  - Step 1 "chooser": Google-style "Choose an account" dialog listing the 3 mock accounts with avatar initials.
+  - Step 2 "code": "Enter the verification code" form with a 6-digit input, a demo-code banner (shows the generated code so the user can read+enter it), verify + resend buttons.
+  - On verify success: saves token, sets session, invalidates data queries → dashboard mounts. Closes overlay.
+  - Accessible: role=dialog, aria-modal, Escape to close, backdrop click to close, aria-label on code input.
+- Hooks (use-api.ts): useGoogleInitiate(enabled) — TanStack query, enabled when overlay opens. useGoogleSendCode + useGoogleVerify mutations with full session/token handling.
+- AuthView: replaced single-step Google with the multi-step overlay. "Continue with Google" button opens the chooser. Divider "or continue with email" preserved below.
+- Enhanced the Get Started hero (auth-view.tsx HeroLanding):
+  - Stats row (7-day forecast horizon · 4 departments · 365 days of history · 95% CI coverage).
+  - 3 feature highlight cards (forecasting, capacity alerts, what-if simulation).
+  - Primary "Get Started" + secondary "I already have an account →" CTAs.
+  - "How it works" 3-step section (Load data → Forecast & detect gaps → Act before overload).
+  - Trust badges (JWT-secured sessions, Role-based access, Real-time data sync).
+  - Disclaimer footer preserved.
+- Fixed code input: unique placeholder "6-digit code" (was "••••••" which clashed with the password field's placeholder in agent-browser snapshots) + aria-label "Google verification code".
+- Verification (agent-browser, single server session — code store is in-memory):
+  - Hero: Get Started ✓, stats row ✓, how it works ✓, trust badges ✓, secondary CTA ✓.
+  - Get Started → Continue with Google → chooser with 3 accounts ✓.
+  - Click Dr. Admin → code step with demo code banner ✓.
+  - Fill code via `find first "#g-code" fill` (reliably updates React controlled state) + 2s wait → click dialog-scoped submit → POST /api/auth/google/verify 200 → dashboard loads ✓ → token PRESENT ✓ → user "Dr. Admin" ✓.
+  - VLM confirmed dashboard fully rendered (KPIs 84%/78%, alert banner, charts) after Google login.
+  - No console errors. Lint clean.
+- Reception update verification (no regression): Reception updates General Ward (600/580) + ICU (32/30) → both dashboards (Reception + Admin) show ward 94% / ICU 94% / availBeds 45 / availIcu 2 (same numbers = real-time sync ✓). Validation: occupied>total → 400 "Occupied beds cannot exceed total beds" ✓.
+
+Stage Summary:
+- Google sign-in is a fully functional 3-step flow: Continue with Google → "Choose an account" (3 mock Google accounts) → pick one → 6-digit verification code "sent to email" (shown in a demo banner) → enter code → verify → logged in → dashboard opens. Works end-to-end with real JWT token issuance.
+- Get Started hero page enhanced with stats row, how-it-works steps, trust badges, and secondary CTA — professional SaaS landing experience.
+- All three sections confirmed working: Reception data entry (Update Beds/ICU/Daily Entry with validation + cross-dashboard sync), login page redesign (hero + Get Started + Google flow + email/password), zero console errors.
