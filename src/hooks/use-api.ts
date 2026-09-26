@@ -26,9 +26,16 @@ export function useSession() {
   })
 }
 
+export type AuthError = Error & { code?: string }
+
+function authError(message: string, code?: string): AuthError {
+  const e = new Error(message) as AuthError
+  e.code = code
+  return e
+}
+
 export function useLogin() {
   const qc = useQueryClient()
-  const { toast } = useToast()
   return useMutation({
     mutationFn: async (vars: { email: string; password: string }) => {
       const res = await fetch('/api/auth/login', {
@@ -36,8 +43,8 @@ export function useLogin() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vars),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Login failed')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw authError(data.error ?? 'Login failed', data.code)
       return data as { user: AuthUser }
     },
     onSuccess: (data) => {
@@ -51,15 +58,12 @@ export function useLogin() {
       qc.invalidateQueries({ queryKey: ['departments'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
     },
-    onError: (e: Error) => {
-      toast({ title: 'Login failed', description: e.message, variant: 'destructive' })
-    },
+    // Errors are rendered inline in the auth view, not as toasts.
   })
 }
 
 export function useSignup() {
   const qc = useQueryClient()
-  const { toast } = useToast()
   return useMutation({
     mutationFn: async (vars: {
       name: string
@@ -72,8 +76,8 @@ export function useSignup() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vars),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Signup failed')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw authError(data.error ?? 'Sign up failed', data.code)
       return data as { user: AuthUser }
     },
     onSuccess: (data) => {
@@ -83,9 +87,7 @@ export function useSignup() {
       qc.invalidateQueries({ queryKey: ['departments'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
     },
-    onError: (e: Error) => {
-      toast({ title: 'Sign up failed', description: e.message, variant: 'destructive' })
-    },
+    // Errors are rendered inline in the auth view, not as toasts.
   })
 }
 

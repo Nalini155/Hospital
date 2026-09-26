@@ -3,20 +3,30 @@ import { hashPassword } from '../src/lib/auth'
 
 async function main() {
   const email = 'admin@careflow.health'
+  const password = 'careflow123'
   const existing = await db.user.findUnique({ where: { email } })
   if (existing) {
-    console.log('Demo user already exists:', email)
-    return
+    // Reset password to guarantee the demo account works reliably
+    await db.user.update({
+      where: { id: existing.id },
+      data: {
+        name: 'Dr. Admin',
+        role: 'ADMIN',
+        passwordHash: hashPassword(password),
+      },
+    })
+    console.log(`Reset demo admin: ${email} / ${password} (id: ${existing.id})`)
+  } else {
+    const created = await db.user.create({
+      data: {
+        name: 'Dr. Admin',
+        email,
+        passwordHash: hashPassword(password),
+        role: 'ADMIN',
+      },
+    })
+    console.log(`Created demo admin: ${email} / ${password} (id: ${created.id})`)
   }
-  await db.user.create({
-    data: {
-      name: 'Dr. Admin',
-      email,
-      passwordHash: hashPassword('careflow123'),
-      role: 'ADMIN',
-    },
-  })
-  console.log('Created demo user:', email, '/ careflow123')
 }
 
 main()

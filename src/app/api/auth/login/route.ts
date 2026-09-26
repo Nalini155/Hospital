@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { verifyPassword, createToken, setSessionCookie } from '@/lib/auth'
 
 const schema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 })
 
@@ -13,27 +13,73 @@ export async function POST(request: Request) {
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Invalid request body', code: 'BAD_REQUEST' },
+      { status: 400 },
+    )
   }
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? 'Validation failed' },
+      {
+        error: parsed.error.issues[0]?.message ?? 'Validation failed',
+        code: 'VALIDATION',
+      },
       { status: 400 },
     )
   }
   const { email, password } = parsed.data
+  const normalizedEmail = email.toLowerCase().trim()
 
-  const user = await db.user.findUnique({ where: { email: email.toLowerCase() } })
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  let user
+  try {
+    user = await db.user.findUnique({ where: { email: normalizedEmail } })
+  } catch {
     return NextResponse.json(
-      { error: 'Invalid email or password' },
+      {
+        error: 'Server error. Please try again in a moment.',
+        code: 'SERVER_ERROR',
+      },
+      { status: 500 },
+    )
+  }
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        error: `No account found with ${normalizedEmail}. Check the address or create a new account.`,
+        code: 'NO_ACCOUNT',
+      },
       { status: 401 },
     )
   }
 
-  const token = await createToken({ userId: user.id, email: user.email, role: user.role })
-  await setSessionCookie(token)
+  if (!verifyPassword(password, user.passwordHash)) {
+    return NextResponse.json(
+      {
+        error: 'Incorrect password. Please try again or use "Forgot password?".',
+        code: 'WRONG_PASSWORD',
+      },
+      { status: 401 },
+    )
+  }
+
+  try {
+    const token = await createToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    })
+    await setSessionCookie(token)
+  } catch {
+    return NextResponse.json(
+      {
+        error: 'Could not create a session. Please try again.',
+        code: 'SERVER_ERROR',
+      },
+      { status: 500 },
+    )
+  }
 
   return NextResponse.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },

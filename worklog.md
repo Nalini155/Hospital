@@ -209,3 +209,46 @@ Work Log:
 Stage Summary:
 - Auth flow fixed and verified end-to-end. Login with correct creds now reliably switches to the dashboard. Wrong creds are rejected with a visible error toast. Session persists via httpOnly JWT cookie. Logout works with confirmation.
 - Root cause was a React Query refetch race, not a backend/DB/password issue (those were always correct).
+
+---
+Task ID: 9 (auth fix v2 + login redesign)
+Agent: orchestrator (main)
+Task: Fix auth end-to-end (specific errors, persistence, demo admin) + redesign login page
+
+Work Log:
+- Diagnosed: backend was always correct (DB persists users, bcrypt verifies, signup 200 for fresh emails, login 200). The user-facing confusion came from (a) generic "Invalid email or password" not distinguishing no-account vs wrong-password, (b) errors only shown as transient toasts, (c) demo admin password possibly stale.
+- Backend (src/app/api/auth/login/route.ts, signup/route.ts): replaced generic error with specific codes + messages:
+  - NO_ACCOUNT (401): "No account found with {email}. Check the address or create a new account."
+  - WRONG_PASSWORD (401): "Incorrect password. Please try again or use 'Forgot password?'."
+  - EMAIL_EXISTS (409): "An account with this email already exists. Try signing in instead."
+  - SERVER_ERROR (500): "Server error. Please try again in a moment." (try/catch around all DB + token ops)
+  - Normalized email (toLowerCase + trim) on both endpoints for consistent lookups.
+- Demo admin: made scripts/seed-demo.ts idempotent (updates password hash if user exists, creates if not) and re-ran it to guarantee admin@careflow.health / careflow123 works.
+- Hooks (src/hooks/use-api.ts): useLogin/useSignup now throw AuthError with .code attached; removed toast onError (errors now render inline). Added AuthError export type.
+- Redesigned auth-view.tsx (src/components/auth/auth-view.tsx) per spec:
+  - Centered 420px card on subtle teal/blue radial-gradient + grid background.
+  - Top: 56px logo mark + "CareFlow Intelligence" name + tagline "Hospital Resource Forecasting & Operations Intelligence".
+  - Sign in / Sign up tabs (role=tablist, aria-selected), active state with ring + shadow.
+  - Icon inputs (Mail/Lock/User) with h-11 padding, show/hide password toggle (Eye/EyeOff).
+  - Forgot password link (right-aligned, subtle gray, hover→primary).
+  - Inline red error banner (role=alert, AlertCircle icon, destructive border/bg) directly above the submit button — driven by component authError state set in mutation onError.
+  - Primary button: solid deep teal, full width, h-11, hover darker, Loader2 spinner while submitting.
+  - Demo hint with monospace creds + autofill button.
+  - Footer disclaimer with HeartPulse icon: "This system provides capacity & operations risk signals only, not medical diagnosis or emergency predictions."
+  - Responsive: max-w-[420px], px-4 py-10, works on mobile (verified 375×812).
+- Verification (agent-browser, end-to-end, server alive in one command):
+  - Wrong password (admin email): inline "Incorrect password. Please try again or use 'Forgot password?'." POST 401 ✓
+  - No account (nobody@nowhere.com): inline "No account found with nobody@nowhere.com. Check the address or create a new account." POST 401 ✓
+  - Demo admin login: dashboard + 6 charts ✓
+  - Fresh signup (e2e_…@test.com): dashboard loaded, POST 200, user persisted (DB count 5→6) ✓
+  - Logout: confirmation dialog → auth ✓
+  - Login back with fresh account: dashboard ✓
+  - Mobile 375×812: appName, tagline, email input, disclaimer all present ✓
+  - VLM confirmed login page design is "flawless and well-structured", both error banners visible with exact text ✓
+  - No console errors, lint clean.
+- Test-harness note: agent-browser `fill @ref` and raw `eval` setting `.value` are unreliable with react-hook-form controlled inputs; the reliable pattern is an IIFE using the native HTMLInputElement value setter + dispatching an 'input' event: `((sel,val)=>{const i=document.querySelector(sel);const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;s.call(i,val);i.dispatchEvent(new Event('input',{bubbles:true}));return i.value})('input[type=email]','value')`.
+
+Stage Summary:
+- Auth fixed end-to-end: specific inline errors (no account / wrong password / server error / email exists), users persist in SQLite, demo admin reliably works (password reset), fresh signup→logout→login-back cycle verified.
+- Login page redesigned to professional SaaS spec: centered 420px card, logo+name+tagline, tabs, icon inputs, show/hide password, inline red error banner above submit, forgot-password link, demo hint, footer disclaimer, fully responsive. VLM-confirmed clean and professional.
+- Lint clean. No console errors.
