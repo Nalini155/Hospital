@@ -64,8 +64,9 @@ export async function POST(request: Request) {
     )
   }
 
+  let token: string
   try {
-    const token = await createToken({
+    token = await createToken({
       userId: user.id,
       email: user.email,
       role: user.role,
@@ -85,7 +86,11 @@ export async function POST(request: Request) {
     )
   }
 
+  // Return the token in the body so the client can ALSO send it as a Bearer
+  // header. This is essential when the app is accessed through a gateway /
+  // preview iframe where the SameSite httpOnly cookie may not be sent back.
   return NextResponse.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    token,
   })
 }

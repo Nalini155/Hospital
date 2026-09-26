@@ -313,3 +313,38 @@ Stage Summary:
 - Diagnostic logging traces the full token lifecycle (issued → cookie found → verified VALID) in the server log for debugging.
 - useDashboard 401-handler invalidates the session as a safety net.
 - Root cause was a cookie-commit race + non-explicit credentials; fixed with session-confirmation refetch + explicit credentials + 401 resilience.
+
+---
+Task ID: 12 (critical: Unauthorized fix — dual-mode token)
+Agent: orchestrator (main)
+Task: Fix critical "Unauthorized" on dashboard after login — root cause + definitive fix
+
+Work Log:
+- Diagnosed root cause: the user accesses the app through the Caddy gateway (port 81) via the Preview Panel, NOT directly on localhost:3000. The login route set an httpOnly SameSite=lax cookie for the localhost origin, but the browser (viewing through the gateway/iframe origin) was NOT sending that cookie back with subsequent API requests → 401 on /api/dashboard. The cookie approach works for same-origin but is unreliable in gateway/iframe/cross-origin contexts.
+- Definitive fix: DUAL-MODE AUTH. The JWT is now sent both ways and the backend accepts either:
+  - Backend (src/lib/auth.ts): new readAuthToken() reads the token from EITHER the careflow_token cookie OR the Authorization: Bearer <token> header (case-insensitive). getAuthUser() uses readAuthToken().
+  - Login + signup routes: now return the JWT in the response body as `token` (in addition to setting the httpOnly cookie). So even if the cookie is blocked, the client has the token.
+  - Frontend (src/lib/api-client.ts): apiFetch() reads the token from localStorage and sends it as `Authorization: Bearer <token>` on every API call. saveAuthToken/getAuthToken/clearAuthToken helpers manage localStorage. credentials:'same-origin' still set so the cookie is sent when available.
+  - useLogin/useSignup onSuccess: calls saveAuthToken(data.token) before refetching the session + invalidating data queries, so the very first /api/dashboard request carries the Bearer header.
+  - useLogout onSuccess: calls clearAuthToken() to remove the stored token.
+- Result: every authenticated request now carries the Bearer header (works in ANY context — same-origin, gateway, iframe, cross-origin), AND the cookie when same-origin. The backend accepts whichever is present.
+- Verification (backend curl):
+  - Login returns { user, token: 224 chars } ✓
+  - /api/dashboard with Bearer header only (no cookie) → 200, full data ✓
+  - /api/auth/me with Bearer header only → 200, returns user ✓
+  - /api/dashboard with no auth → 401 ✓
+  - /api/dashboard with cookie → 200 ✓
+- Verification (agent-browser, full flow):
+  - localStorage token: 224 chars after login ✓
+  - Login → dashboard: POST /login 200 → GET /auth/me 200 → GET /dashboard 200 (first attempt, no 401, no retry). KPIs + alert + charts + gap table all render. ✓
+  - Refresh → dashboard: token persists in localStorage, /auth/me 200 → /dashboard 200 ✓
+  - Logout → re-login: token CLEARED on logout, re-login → dashboard 200 ✓
+  - All views (Forecast, Departments, Alerts): 200, data loads ✓
+  - Server log: "token found, VALID" on every request after login; no "no token" errors.
+  - No console errors. Lint clean.
+  - VLM confirmed dashboard fully loaded, no Unauthorized/error messages.
+
+Stage Summary:
+- Root cause was a cross-origin/gateway cookie problem: the httpOnly SameSite=lax cookie set on localhost wasn't sent back when the browser viewed the app through the Caddy gateway Preview Panel, causing 401 on every authenticated API call.
+- Definitive fix: dual-mode auth. The JWT is returned in the login/signup response body and stored in localStorage; the client sends it as an Authorization: Bearer header on every API call; the backend reads the token from EITHER the cookie OR the header. This works in all access contexts.
+- Dashboard now loads with real data automatically after login — no 401, no retry needed.

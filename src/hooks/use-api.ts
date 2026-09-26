@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/hooks/use-toast'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, saveAuthToken, clearAuthToken } from '@/lib/api-client'
 import type {
   AuthUser,
   DashboardOverview,
@@ -46,23 +46,23 @@ export function useLogin() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw authError(data.error ?? 'Login failed', data.code)
-      return data as { user: AuthUser }
+      return data as { user: AuthUser; token: string }
     },
     onSuccess: async (data) => {
-      // The login response contains the user and the server has set the httpOnly
-      // session cookie. We set the session cache so the UI can switch to the
-      // dashboard, BUT we also refetch /api/auth/me to CONFIRM the cookie is
-      // actually committed by the browser before any data fetch fires. This
-      // eliminates the race where useDashboard's fetch ran before the cookie
-      // was stored, returning 401.
+      // Store the JWT in localStorage so we can send it as a Bearer header on
+      // every subsequent API call. This works in ANY context (same-origin,
+      // gateway, iframe, cross-origin) — unlike the httpOnly cookie alone.
+      if (data.token) saveAuthToken(data.token)
+      // Set the session cache so the UI switches to the dashboard, then refetch
+      // /api/auth/me to confirm the session is live (cookie OR header).
       qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
       try {
         await qc.refetchQueries({ queryKey: ['session'] })
       } catch {
-        // refetch failure is non-fatal; the setQueryData above already set the session
+        // non-fatal
       }
-      // Now that the cookie is confirmed, invalidate data queries so they fetch
-      // fresh with the cookie attached.
+      // Now that the session is confirmed, invalidate data queries so they fetch
+      // fresh with the token attached (cookie or Authorization header).
       qc.invalidateQueries({ queryKey: ['dashboard'] })
       qc.invalidateQueries({ queryKey: ['forecast'] })
       qc.invalidateQueries({ queryKey: ['departments'] })
@@ -88,9 +88,10 @@ export function useSignup() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw authError(data.error ?? 'Sign up failed', data.code)
-      return data as { user: AuthUser }
+      return data as { user: AuthUser; token: string }
     },
     onSuccess: async (data) => {
+      if (data.token) saveAuthToken(data.token)
       qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
       try {
         await qc.refetchQueries({ queryKey: ['session'] })
@@ -114,6 +115,8 @@ export function useLogout() {
       await apiFetch('/api/auth/logout', { method: 'POST' })
     },
     onSuccess: () => {
+      // Clear the stored JWT so subsequent requests don't send a stale token.
+      clearAuthToken()
       qc.setQueryData(['session'], { user: null })
       qc.clear()
       router.refresh()

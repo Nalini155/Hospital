@@ -75,8 +75,9 @@ export async function POST(request: Request) {
     )
   }
 
+  let token: string
   try {
-    const token = await createToken({
+    token = await createToken({
       userId: user.id,
       email: user.email,
       role: user.role,
@@ -92,7 +93,10 @@ export async function POST(request: Request) {
     )
   }
 
+  // Return the token in the body so the client can ALSO send it as a Bearer
+  // header (works across gateway / iframe / cross-origin contexts).
   return NextResponse.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
+    token,
   })
 }

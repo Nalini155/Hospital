@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 
 const SECRET =
   process.env.JWT_SECRET ||
@@ -60,6 +60,9 @@ export async function setSessionCookie(token: string) {
   const store = await cookies()
   store.set(TOKEN_NAME, token, {
     httpOnly: true,
+    // 'lax' works for same-origin top-level navigations; the Authorization
+    // header fallback covers cross-origin / gateway / iframe contexts where
+    // SameSite cookies would be blocked.
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     path: '/',
@@ -77,18 +80,37 @@ export async function readSessionCookie(): Promise<string | undefined> {
   return store.get(TOKEN_NAME)?.value
 }
 
+/**
+ * Read the auth token from EITHER the careflow_token cookie OR the
+ * Authorization: Bearer <token> header. The header fallback is essential
+ * when the app is served through a gateway/preview iframe where SameSite
+ * httpOnly cookies may not be sent back by the browser.
+ */
+export async function readAuthToken(): Promise<string | undefined> {
+  // 1. Try the cookie first (same-origin requests)
+  const cookieToken = await readSessionCookie()
+  if (cookieToken) return cookieToken
+  // 2. Fall back to the Authorization header (cross-origin / gateway / iframe)
+  const h = await headers()
+  const authHeader = h.get('authorization') ?? h.get('Authorization')
+  if (authHeader?.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim()
+  }
+  return undefined
+}
+
 export async function getAuthUser(): Promise<{
   userId: string
   email: string
   role: string
 } | null> {
-  const token = await readSessionCookie()
+  const token = await readAuthToken()
   // Temporary diagnostic logging to trace auth issues. Remove once stable.
   if (process.env.NODE_ENV !== 'production') {
     if (!token) {
-      console.log('[auth] getAuthUser: no careflow_token cookie present in request')
+      console.log('[auth] getAuthUser: no token (cookie or Authorization header)')
     } else {
-      console.log('[auth] getAuthUser: careflow_token cookie found, length=', token.length)
+      console.log('[auth] getAuthUser: token found, length=', token.length)
     }
   }
   if (!token) return null
