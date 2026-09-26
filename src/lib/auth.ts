@@ -83,6 +83,18 @@ export async function getAuthUser(): Promise<{
   role: string
 } | null> {
   const token = await readSessionCookie()
+  // Temporary diagnostic logging to trace auth issues. Remove once stable.
+  if (process.env.NODE_ENV !== 'production') {
+    if (!token) {
+      console.log('[auth] getAuthUser: no careflow_token cookie present in request')
+    } else {
+      console.log('[auth] getAuthUser: careflow_token cookie found, length=', token.length)
+    }
+  }
   if (!token) return null
-  return verifyToken(token)
+  const verified = await verifyToken(token)
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[auth] getAuthUser: token verify result =', verified ? 'VALID' : 'INVALID/EXPIRED')
+  }
+  return verified
 }

@@ -71,6 +71,10 @@ export async function POST(request: Request) {
       role: user.role,
     })
     await setSessionCookie(token)
+    // Temporary diagnostic logging. Remove once stable.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[auth] login: token issued + cookie set for', user.email, '| token length:', token.length)
+    }
   } catch {
     return NextResponse.json(
       {

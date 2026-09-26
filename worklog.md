@@ -283,3 +283,33 @@ Stage Summary:
 - "Regenerate data" button now shows the actual failure reason in a toast if it fails.
 - OverviewView error state is actionable: shows the real error + Retry button + hint.
 - Root cause was unguarded array access on empty data + a too-strict seed threshold + silent error swallowing — all fixed with guards, try/catch, and a <14-day reseed threshold.
+
+---
+Task ID: 11 (auth token / Unauthorized fix)
+Agent: orchestrator (main)
+Task: Fix "Unauthorized" on dashboard data request after login
+
+Work Log:
+- Diagnosed: Backend was correct — curl tests confirmed login sets httpOnly cookie, /api/auth/me + /api/dashboard both return 200 with the cookie, 401 without. The user-facing "Unauthorized" was an intermittent client-side race: useLogin.onSuccess only called setQueryData(['session']) (instant switch to DashboardShell), so useDashboard's fetch could fire before the browser fully committed the login response's Set-Cookie. Also, fetch calls didn't specify credentials explicitly, and a stale React Query 401 error could persist.
+- Created shared apiFetch wrapper (src/lib/api-client.ts): explicitly sets `credentials: 'same-origin'` + `cache: 'no-store'` on every authenticated API call, guaranteeing the httpOnly careflow_token cookie is included. Updated ALL data hooks (useSession, useLogin, useSignup, useLogout, useDashboard, useForecast, useDepartments, useAlerts, useHistorical, useRegenerateData, useSimulate) to use it.
+- Fixed useLogin/useSignup onSuccess race: now calls `await qc.refetchQueries({queryKey:['session']})` after setQueryData. This sends GET /api/auth/me (which includes the cookie) to CONFIRM the browser has committed the cookie before the dashboard data queries are invalidated/fetch. Only after confirmation are dashboard/forecast/departments/alerts invalidated. This eliminates the race — the dashboard's first fetch always has a valid cookie.
+- Added 401 resilience to useDashboard: onError checks if the error status is 401 and invalidates the session query, so useSession re-checks /api/auth/me. If the session is truly invalid, the page switches back to AuthView; if it was a transient hiccup, the retry (retry:2) succeeds with the confirmed cookie.
+- Added temporary diagnostic logging (as requested):
+  - getAuthUser (src/lib/auth.ts): logs whether the careflow_token cookie was found in the request, its length, and whether token verification returned VALID/INVALID/EXPIRED.
+  - /api/auth/login route: logs when a token is issued + cookie set, including the user email and token length.
+  - /api/auth/me route: logs when returning a user, and separately logs when the session is valid but the user isn't found in the DB.
+- Verification (agent-browser + server logs):
+  - Login → dashboard: POST /login 200 → GET /auth/me 200 (cookie confirmed) → GET /dashboard 200 (first attempt, no 401, no retry). KPIs + alert + charts + gap table all render. ✓
+  - Refresh → dashboard: GET /auth/me 200 → GET /dashboard 200. Cookie persists. ✓
+  - Logout → re-login → dashboard: same clean flow, 200 on all requests. ✓
+  - All other views (Forecast, Departments, Alerts): 200, data loads. ✓
+  - Server log traces confirm: "cookie found, length 224" → "token verify result = VALID" on every dashboard request. No "no cookie" or "INVALID" after login.
+  - No console errors. Lint clean.
+  - VLM confirmed: dashboard fully loaded, no Unauthorized/error messages.
+
+Stage Summary:
+- Auth flow is now bulletproof: login confirms the cookie via /api/auth/me refetch BEFORE the dashboard data queries fire, so the dashboard's first fetch always includes the valid cookie → 200 on the first try (no retry needed, no 401).
+- All API calls explicitly send credentials:'same-origin' via the shared apiFetch wrapper.
+- Diagnostic logging traces the full token lifecycle (issued → cookie found → verified VALID) in the server log for debugging.
+- useDashboard 401-handler invalidates the session as a safety net.
+- Root cause was a cookie-commit race + non-explicit credentials; fixed with session-confirmation refetch + explicit credentials + 401 resilience.
