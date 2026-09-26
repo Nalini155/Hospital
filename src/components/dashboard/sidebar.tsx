@@ -7,13 +7,15 @@ import {
   BellRing,
   SlidersHorizontal,
   Settings as SettingsIcon,
+  ShieldCheck,
 } from 'lucide-react'
 import { CareFlowLogo } from '@/components/careflow-logo'
 import { useUiStore } from '@/lib/store'
-import { useAlerts } from '@/hooks/use-api'
+import { useSession, useAlerts } from '@/hooks/use-api'
 import { cn } from '@/lib/utils'
 
-const NAV = [
+// Items shown to all logged-in (non-Reception) users
+const BASE_NAV = [
   { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'forecast', label: 'Forecast', icon: TrendingUp },
   { id: 'departments', label: 'Departments', icon: Building2 },
@@ -22,15 +24,24 @@ const NAV = [
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const
 
+// Admin-only item, appended at the end
+const ADMIN_NAV = [
+  { id: 'admin', label: 'Admin', icon: ShieldCheck },
+] as const
+
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const view = useUiStore((s) => s.view)
   const setView = useUiStore((s) => s.setView)
+  const { data: sessionData } = useSession()
   const { data } = useAlerts()
   const alertCount = data?.alerts?.length ?? 0
+  const isAdmin = sessionData?.user?.role === 'ADMIN'
+
+  const nav = isAdmin ? [...BASE_NAV, ...ADMIN_NAV] : BASE_NAV
 
   return (
     <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Primary">
-      {NAV.map((item) => {
+      {nav.map((item) => {
         const active = view === item.id
         const Icon = item.icon
         const showBadge = item.id === 'alerts' && alertCount > 0

@@ -41,6 +41,7 @@ const VIEW_TITLES: Record<string, { title: string; subtitle: string }> = {
   alerts: { title: 'Capacity Alerts', subtitle: 'Threshold breaches & resource gap summary' },
   simulation: { title: 'What-If Simulation', subtitle: 'Model scenarios & department impact' },
   settings: { title: 'Settings', subtitle: 'Account, data & system configuration' },
+  admin: { title: 'Admin', subtitle: 'User management, system overview & activity log' },
 }
 
 export function DashboardHeader() {

@@ -375,3 +375,42 @@ Stage Summary:
 - Reception role fully implemented end-to-end: signup with Reception role → login → lands on a separate simplified Reception dashboard with today's overview cards, capacity alert, and quick check-in table. Reception sidebar shows only Dashboard + logout. Reception users cannot access the full analytics dashboard, forecast, departments, alerts, what-if simulation, settings, or regenerate — both client-side (never mounts the full shell) and backend-enforced (403 FORBIDDEN_ROLE on all those endpoints). Admin/Staff retain full access.
 - Demo accounts: admin@careflow.health / careflow123 (Admin, full dashboard) and reception@careflow.health / reception123 (Reception, simplified dashboard).
 - Same professional design language (deep teal-blue, card-based, Inter font, disclaimer footer).
+
+---
+Task ID: 14 (Admin Dashboard)
+Agent: orchestrator (main)
+Task: Verify + implement the Admin Dashboard (User Management, System Overview, Data Management, Activity Log)
+
+Work Log:
+- Verified the Admin view was NEVER built — no admin-view.tsx, no "admin" in the sidebar NAV array, no admin route in the view-router. Implemented it completely now.
+- Prisma schema: added `active Boolean @default(true)` to User (for deactivate/reactivate) and a new `Activity` model (id, action, detail, userEmail, userName, createdAt) for the audit log. Ran db:push.
+- Backend:
+  - src/lib/activity.ts: logActivity() helper (best-effort, never fails parent op).
+  - Login route: now checks `user.active === false` → 403 ACCOUNT_DEACTIVATED; logs 'login' activity on success.
+  - Signup route: logs 'signup' activity on success.
+  - /api/data/historical POST (regenerate): logs 'regenerate_data' activity (looks up actor name).
+  - src/lib/admin-guard.ts: requireAdmin() returns 401 if no session, 403 FORBIDDEN_ADMIN if role !== ADMIN.
+  - /api/admin/users GET: lists all users (id, name, email, role, active, joinedDate). PATCH: updates role and/or active, with self-guard (can't deactivate/demote yourself), logs role_change/deactivate/reactivate activities.
+  - /api/admin/overview GET: total users (by role + active count), hospitalRecords, departmentRecords, daysOfHistory, departments=4, lastRefresh timestamp + date, forecastRuns (regenerate activity count).
+  - /api/admin/activity GET: newest N activity entries (default 20, max 100).
+- Frontend:
+  - src/hooks/use-api.ts: added AdminUser, AdminOverview, AdminActivity types + useAdminUsers, useUpdateUser (mutation + toast), useAdminOverview, useAdminActivity hooks.
+  - src/components/views/admin-view.tsx: full Admin Dashboard with 4 sections:
+    1. System Overview — 4 KPI cards (Total Users, Days of History, Forecast Runs, Last Data Refresh) with breakdown hints.
+    2. User Management — table (Name, Email, Role [Select], Joined, Status [Active/Deactivated badge], Actions [Deactivate/Reactivate button]) in a scrollable container; role change + activate/deactivate via PATCH with loading state + toasts.
+    3. Data Management — explanation + "Regenerate dataset" button (reuses useRegenerateData, logs activity).
+    4. Activity Log — table (Action badge, User, Detail, Time) newest first, scrollable.
+    Access control: useEffect redirects non-ADMIN users to overview; shows "Administrator access required" while redirecting.
+  - src/components/dashboard/sidebar.tsx: split NAV into BASE_NAV (all non-Reception) + ADMIN_NAV (ShieldCheck "Admin"); SidebarNav uses useSession to check role === 'ADMIN' and only appends the Admin item for admins.
+  - src/components/dashboard/view-router.tsx: added `case 'admin': return <AdminView />`.
+  - src/components/dashboard/header.tsx: added 'admin' to VIEW_TITLES ("Admin" / "User management, system overview & activity log").
+- Verification (agent-browser + curl):
+  - Backend curl: /api/admin/overview 200 (8 users, 365 hospital records, 1460 dept records, 4 depts, last refresh timestamp), /api/admin/users 200 (8 users with all fields), /api/admin/activity 200 (login entries logged), PATCH role 200. Reception → 403 on all admin endpoints; no auth → 401. ✓
+  - Browser: Admin login → dashboard ✓. Sidebar shows "Dashboard | Forecast | Departments | Alerts | What-If | Settings | Admin" with the Admin item present ✓. Clicked Admin → "Admin Dashboard" page loads with all 4 sections (System Overview, User Management, Data Management, Activity Log), user table has 15 rows (real users), all 3 admin API endpoints 200, Regenerate button shows success toast. ✓
+  - Staff user login → sidebar shows "Dashboard | Forecast | Departments | Alerts | What-If | Settings" — NO Admin item (correctly hidden) ✓.
+  - VLM confirmed: Admin Dashboard title, 4 KPI cards (Total Users 8, Days of History 365, Forecast Runs 1, Last Data Refresh Sep 27), User Management table with all columns + real users, Data Management card with Regenerate button, Activity Log table with Action/User/Detail/Time columns populated. No blank areas or errors. Clean professional deep teal-blue card design.
+  - No console errors. Lint clean.
+
+Stage Summary:
+- Admin Dashboard is fully implemented and verified. Admin users see an "Admin" item in the sidebar (ShieldCheck icon, only visible to ADMIN role) that navigates to a complete admin view with User Management (list + role change + deactivate/reactivate), System Overview (user counts, data stats, forecast runs, last refresh), Data Management (regenerate button), and an Activity Log (audited login/signup/role-change/deactivate/regenerate actions with timestamps).
+- Access control is enforced both client-side (sidebar only shows Admin for ADMIN role; AdminView redirects non-admins to overview) and backend (requireAdmin guard returns 401/403 on all /api/admin/* endpoints). Staff and Reception users cannot see the Admin nav or access admin data.

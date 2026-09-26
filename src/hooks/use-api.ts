@@ -312,3 +312,113 @@ export function useSimulate() {
     },
   })
 }
+
+// ---------- Admin dashboard ----------
+export type AdminUser = {
+  id: string
+  name: string
+  email: string
+  role: 'ADMIN' | 'STAFF' | 'RECEPTION'
+  active: boolean
+  joinedDate: string
+}
+
+export type AdminOverview = {
+  users: { total: number; admin: number; staff: number; reception: number; active: number }
+  data: {
+    hospitalRecords: number
+    departmentRecords: number
+    daysOfHistory: number
+    departments: number
+    lastRefresh: string | null
+    lastRefreshDate: string | null
+  }
+  forecastRuns: number
+}
+
+export type AdminActivity = {
+  id: string
+  action: string
+  detail: string
+  userEmail: string
+  userName: string
+  timestamp: string
+}
+
+export function useAdminUsers() {
+  const qc = useQueryClient()
+  return useQuery<{ users: AdminUser[] }>({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/users')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const err = new Error(data.error ?? 'Failed to load users') as Error & {
+          code?: string; status?: number
+        }
+        err.code = data.code
+        err.status = res.status
+        throw err
+      }
+      return data as { users: AdminUser[] }
+    },
+  })
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient()
+  const { toast } = useToast()
+  return useMutation({
+    mutationFn: async (vars: {
+      userId: string
+      role?: 'ADMIN' | 'STAFF' | 'RECEPTION'
+      active?: boolean
+    }) => {
+      const res = await apiFetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to update user')
+      return data as { user: AdminUser }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-users'] })
+      qc.invalidateQueries({ queryKey: ['admin-overview'] })
+      qc.invalidateQueries({ queryKey: ['admin-activity'] })
+      toast({ title: 'User updated', description: 'The user record was saved.' })
+    },
+    onError: (e: Error) => {
+      toast({
+        title: 'Update failed',
+        description: e.message,
+        variant: 'destructive',
+      })
+    },
+  })
+}
+
+export function useAdminOverview() {
+  return useQuery<AdminOverview>({
+    queryKey: ['admin-overview'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/admin/overview')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load overview')
+      return data as AdminOverview
+    },
+  })
+}
+
+export function useAdminActivity(limit = 20) {
+  return useQuery<{ activities: AdminActivity[] }>({
+    queryKey: ['admin-activity', limit],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/admin/activity?limit=${limit}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load activity')
+      return data as { activities: AdminActivity[] }
+    },
+  })
+}

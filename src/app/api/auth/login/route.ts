@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { verifyPassword, createToken, setSessionCookie } from '@/lib/auth'
+import { logActivity } from '@/lib/activity'
 
 const schema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
     )
   }
 
+  if (user.active === false) {
+    return NextResponse.json(
+      {
+        error:
+          'This account has been deactivated. Contact an administrator to restore access.',
+        code: 'ACCOUNT_DEACTIVATED',
+      },
+      { status: 403 },
+    )
+  }
+
   if (!verifyPassword(password, user.passwordHash)) {
     return NextResponse.json(
       {
@@ -72,7 +84,6 @@ export async function POST(request: Request) {
       role: user.role,
     })
     await setSessionCookie(token)
-    // Temporary diagnostic logging. Remove once stable.
     if (process.env.NODE_ENV !== 'production') {
       console.log('[auth] login: token issued + cookie set for', user.email, '| token length:', token.length)
     }
@@ -86,9 +97,13 @@ export async function POST(request: Request) {
     )
   }
 
-  // Return the token in the body so the client can ALSO send it as a Bearer
-  // header. This is essential when the app is accessed through a gateway /
-  // preview iframe where the SameSite httpOnly cookie may not be sent back.
+  await logActivity({
+    action: 'login',
+    detail: 'Signed in',
+    userEmail: user.email,
+    userName: user.name,
+  })
+
   return NextResponse.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
     token,

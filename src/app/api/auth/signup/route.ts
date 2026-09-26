@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { hashPassword, createToken, setSessionCookie } from '@/lib/auth'
+import { logActivity } from '@/lib/activity'
 
 const schema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -95,6 +96,12 @@ export async function POST(request: Request) {
 
   // Return the token in the body so the client can ALSO send it as a Bearer
   // header (works across gateway / iframe / cross-origin contexts).
+  await logActivity({
+    action: 'signup',
+    detail: `Created account with role ${user.role}`,
+    userEmail: user.email,
+    userName: user.name,
+  })
   return NextResponse.json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
     token,

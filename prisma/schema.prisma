@@ -16,6 +16,7 @@ model User {
   name         String
   passwordHash String
   role         String   @default("STAFF") // ADMIN | STAFF | RECEPTION
+  active       Boolean  @default(true) // false = deactivated (cannot log in)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -46,4 +47,14 @@ model DepartmentDaily {
   createdAt    DateTime @default(now())
 
   @@unique([date, department])
+}
+
+/// Audit log of significant system actions (admin dashboard "Activity Log")
+model Activity {
+  id        String   @id @default(cuid())
+  action    String // login | signup | role_change | deactivate | reactivate | regenerate_data | ...
+  detail    String // human-readable detail (e.g. "Set role for x@y to ADMIN")
+  userEmail String // who performed the action
+  userName  String
+  createdAt DateTime @default(now())
 }
