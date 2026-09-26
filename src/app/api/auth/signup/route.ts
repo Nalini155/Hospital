@@ -37,7 +37,8 @@ export async function POST(request: Request) {
   let existing
   try {
     existing = await db.user.findUnique({ where: { email: normalizedEmail } })
-  } catch {
+  } catch (e) {
+    console.error('[auth/signup] DB error checking existing user:', e instanceof Error ? e.message : e)
     return NextResponse.json(
       {
         error: 'Server error. Please try again in a moment.',
@@ -66,7 +67,8 @@ export async function POST(request: Request) {
         role,
       },
     })
-  } catch {
+  } catch (e) {
+    console.error('[auth/signup] DB error creating user:', e instanceof Error ? e.message : e)
     return NextResponse.json(
       {
         error: 'Could not create your account. Please try again.',

@@ -6,6 +6,11 @@ generator client {
 }
 
 datasource db {
+  // Provider is selected at build time via the DATABASE_URL scheme:
+  //   - file:./...  → sqlite (local dev only — does NOT work on Vercel)
+  //   - postgresql://... → postgresql (Vercel / Neon / Supabase production)
+  // The `db:generate` script reads this env var to pick the provider so a
+  // single codebase works in both environments. See package.json `db:generate`.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }

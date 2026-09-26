@@ -480,3 +480,26 @@ Work Log:
 Stage Summary:
 - Google sign-in now supports ANY personal email: click "Continue with Google" → either pick a listed account or enter your own email → a 6-digit code is sent (shown in a demo banner) → enter it → logged in → dashboard opens.
 - Reception menu now has Update Beds, Update ICU, Update Patients (+ Daily Entry combined), so reception staff can update bed/ICU/patient numbers that reflect across the Admin/main dashboard in real time. Admin dashboard unchanged (still has forecast etc.).
+
+---
+Task ID: 17 (Vercel production fix)
+Agent: orchestrator (main)
+Task: Fix "Server error" on Vercel — migrate SQLite→Postgres, env vars, error logging, deploy guide
+
+Work Log:
+- Root cause: app used SQLite with local file (file:./db/custom.db). Vercel serverless functions have an ephemeral, read-only filesystem → the SQLite file can't be written to and isn't bundled → every DB operation fails → "Server error" on login.
+- Prisma provider: made it switchable via scripts/select-provider.cjs — reads DATABASE_URL scheme and rewrites prisma/schema.prisma provider (sqlite for file://, postgresql for postgresql://). Called by postinstall/db:generate/db:push. So: local dev keeps SQLite (Z.ai preview works unchanged), Vercel production uses Postgres. Verified: postgresql URL → provider="postgresql"; file URL → provider="sqlite".
+- JWT_SECRET: was a hardcoded insecure fallback. Now required in production (resolveSecret() throws + logs a clear FATAL message if missing/short in NODE_ENV=production). Dev keeps the fallback. Fixes a security hole too (anyone could've forged tokens with the public fallback).
+- package.json: added "postinstall": "node scripts/select-provider.cjs && prisma generate" so Vercel's build generates the Prisma client with the right provider. Added db:deploy (prisma migrate deploy) for production migrations.
+- Error logging: login + signup routes now console.error the real underlying cause on DB/token failures (e.g. "Can't reach database server", "relation User does not exist") so it shows in Vercel → Functions → Logs instead of a generic message.
+- src/lib/db.ts: production-only checks that warn at startup if DATABASE_URL is missing or still a file: path (SQLite) — logs a clear FATAL explaining the fix.
+- /api/health route: GET returns {status, env, db, auth} showing DATABASE_URL/JWT_SECRET presence, DB connectivity, and the detected scheme. Visit https://your-app.vercel.app/api/health to debug a broken deploy without guessing.
+- VERCEL_DEPLOY.md: full step-by-step guide — the EXACT two env vars to add (DATABASE_URL + JWT_SECRET), how to get a free Neon Postgres URL, how to generate a JWT secret, how to run db:push against Neon, and a troubleshooting table for common errors.
+- Verification: local dev still works (SQLite, provider auto-detected as sqlite, login 200 + token, /api/health returns db connected). Lint clean.
+
+Stage Summary:
+- Two env vars needed in Vercel (Production + Preview + Development environments):
+  1. DATABASE_URL = postgresql://...neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=15 (from a free Neon Postgres project)
+  2. JWT_SECRET = (48+ char random string from `openssl rand -base64 48`)
+- After adding env vars: run `DATABASE_URL=... bun run db:push` once to create tables, then `bun run scripts/seed-demo.ts` to seed admin/reception demo accounts, then redeploy. Visit /api/health to confirm "ok".
+- Full guide in VERCEL_DEPLOY.md. No other code changes needed.

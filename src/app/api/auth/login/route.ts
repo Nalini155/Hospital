@@ -35,7 +35,11 @@ export async function POST(request: Request) {
   let user
   try {
     user = await db.user.findUnique({ where: { email: normalizedEmail } })
-  } catch {
+  } catch (e) {
+    // DB error — log the real cause so it shows in Vercel logs. The most common
+    // production cause is a missing/misconfigured DATABASE_URL (e.g. SQLite file
+    // on Vercel's ephemeral filesystem, or Postgres not provisioned).
+    console.error('[auth/login] DB error looking up user:', e instanceof Error ? e.message : e)
     return NextResponse.json(
       {
         error: 'Server error. Please try again in a moment.',
@@ -87,7 +91,8 @@ export async function POST(request: Request) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('[auth] login: token issued + cookie set for', user.email, '| token length:', token.length)
     }
-  } catch {
+  } catch (e) {
+    console.error('[auth/login] token creation failed:', e instanceof Error ? e.message : e)
     return NextResponse.json(
       {
         error: 'Could not create a session. Please try again.',

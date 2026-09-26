@@ -2,11 +2,27 @@ import { SignJWT, jwtVerify } from 'jose'
 import bcrypt from 'bcryptjs'
 import { cookies, headers } from 'next/headers'
 
-const SECRET =
-  process.env.JWT_SECRET ||
-  'careflow-dev-secret-change-me-please-0123456789abcdef0123456789abcdef'
 const TOKEN_NAME = 'careflow_token'
 const TOKEN_TTL_DAYS = 7
+
+/**
+ * Resolve the JWT signing secret. In production (NODE_ENV === 'production')
+ * we REQUIRE a real JWT_SECRET env var — the hardcoded dev fallback is only
+ * for local development. If it's missing in production we throw a clear
+ * error (which shows in server logs) instead of silently using an insecure
+ * default that would let anyone forge tokens.
+ */
+function resolveSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (secret && secret.length >= 32) return secret
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[auth] FATAL: JWT_SECRET env var is missing or too short (<32 chars) in production. Set it in Vercel → Project Settings → Environment Variables.')
+    throw new Error('Server misconfiguration: JWT_SECRET is not set.')
+  }
+  // Dev-only fallback so local `bun run dev` works without setup.
+  console.warn('[auth] WARNING: using insecure dev JWT_SECRET fallback. Set JWT_SECRET for production.')
+  return 'careflow-dev-secret-change-me-please-0123456789abcdef0123456789abcdef'
+}
 
 const enc = new TextEncoder()
 
@@ -27,7 +43,7 @@ export async function createToken(payload: {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${TOKEN_TTL_DAYS}d`)
-    .sign(enc.encode(SECRET))
+    .sign(enc.encode(resolveSecret()))
 }
 
 export async function verifyToken(token: string): Promise<{
@@ -36,7 +52,7 @@ export async function verifyToken(token: string): Promise<{
   role: string
 } | null> {
   try {
-    const { payload } = await jwtVerify(token, enc.encode(SECRET), {
+    const { payload } = await jwtVerify(token, enc.encode(resolveSecret()), {
       algorithms: ['HS256'],
     })
     if (
