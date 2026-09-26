@@ -107,6 +107,98 @@ export function useSignup() {
   })
 }
 
+export function useGoogleLogin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch('/api/auth/google', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw authError(data.error ?? 'Google sign-in failed', data.code)
+      return data as { user: AuthUser; token: string }
+    },
+    onSuccess: async (data) => {
+      if (data.token) saveAuthToken(data.token)
+      qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
+      try {
+        await qc.refetchQueries({ queryKey: ['session'] })
+      } catch {
+        // non-fatal
+      }
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['forecast'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+    },
+  })
+}
+
+// ---------- Google multi-step flow (account chooser → email code → login) ----------
+export type MockGoogleAccount = {
+  email: string
+  name: string
+  initials: string
+  role: 'ADMIN' | 'STAFF' | 'RECEPTION'
+}
+
+/** Shared success handler for the Google verify step — set session + invalidate. */
+function finishGoogleLogin(qc: ReturnType<typeof useQueryClient>, data: { user: AuthUser; token: string }) {
+  if (data.token) saveAuthToken(data.token)
+  qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
+  // Fire-and-forget the session refetch; don't block the UI.
+  qc.refetchQueries({ queryKey: ['session'] }).catch(() => {})
+  qc.invalidateQueries({ queryKey: ['dashboard'] })
+  qc.invalidateQueries({ queryKey: ['forecast'] })
+  qc.invalidateQueries({ queryKey: ['departments'] })
+  qc.invalidateQueries({ queryKey: ['alerts'] })
+}
+
+export function useGoogleInitiate(enabled = true) {
+  return useQuery<{ accounts: MockGoogleAccount[] }>({
+    queryKey: ['google-initiate'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/auth/google/initiate')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load Google accounts')
+      return data as { accounts: MockGoogleAccount[] }
+    },
+    // Fetch only when enabled (e.g. when the chooser dialog opens).
+    enabled,
+    staleTime: Infinity,
+  })
+}
+
+export function useGoogleSendCode() {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiFetch('/api/auth/google/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw authError(data.error ?? 'Could not send code', data.code)
+      return data as { ok: boolean; email: string; demoCode: string; expiresInMs: number; message: string }
+    },
+  })
+}
+
+export function useGoogleVerify() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { email: string; code: string }) => {
+      const res = await apiFetch('/api/auth/google/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw authError(data.error ?? 'Verification failed', data.code)
+      return data as { user: AuthUser; token: string }
+    },
+    onSuccess: (data) => finishGoogleLogin(qc, data),
+  })
+}
+
 export function useLogout() {
   const qc = useQueryClient()
   const router = useRouter()
@@ -419,6 +511,101 @@ export function useAdminActivity(limit = 20) {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? 'Failed to load activity')
       return data as { activities: AdminActivity[] }
+    },
+  })
+}
+
+// ---------- Reception data entry (Update Beds / Update ICU) ----------
+export type ReceptionDeptCurrent = {
+  department: string
+  totalBeds: number
+  bedsOccupied: number
+}
+
+export function useReceptionBeds() {
+  return useQuery<{ today: string; departments: ReceptionDeptCurrent[] }>({
+    queryKey: ['reception-beds'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/reception/update-beds')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load bed data')
+      return data as { today: string; departments: ReceptionDeptCurrent[] }
+    },
+  })
+}
+
+export function useUpdateBeds() {
+  const qc = useQueryClient()
+  const { toast } = useToast()
+  return useMutation({
+    mutationFn: async (vars: {
+      totalBeds: number
+      bedsOccupied: number
+      department: 'Emergency' | 'ICU' | 'General Ward' | 'Pediatrics'
+    }) => {
+      const res = await apiFetch('/api/reception/update-beds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save bed data')
+      return data as { ok: boolean; message: string }
+    },
+    onSuccess: (data) => {
+      // Invalidate all data queries so the reception dashboard AND the admin
+      // / main dashboard reflect the updated numbers in real time.
+      qc.invalidateQueries({ queryKey: ['reception'] })
+      qc.invalidateQueries({ queryKey: ['reception-beds'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+      qc.invalidateQueries({ queryKey: ['admin-overview'] })
+      toast({ title: 'Saved', description: data.message })
+    },
+    onError: (e: Error) => {
+      toast({ title: 'Save failed', description: e.message, variant: 'destructive' })
+    },
+  })
+}
+
+export function useReceptionIcu() {
+  return useQuery<{ today: string; totalIcuBeds: number; icuBedsOccupied: number }>({
+    queryKey: ['reception-icu'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/reception/update-icu')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load ICU data')
+      return data as { today: string; totalIcuBeds: number; icuBedsOccupied: number }
+    },
+  })
+}
+
+export function useUpdateIcu() {
+  const qc = useQueryClient()
+  const { toast } = useToast()
+  return useMutation({
+    mutationFn: async (vars: { totalIcuBeds: number; icuBedsOccupied: number }) => {
+      const res = await apiFetch('/api/reception/update-icu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save ICU data')
+      return data as { ok: boolean; message: string }
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['reception'] })
+      qc.invalidateQueries({ queryKey: ['reception-icu'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+      qc.invalidateQueries({ queryKey: ['admin-overview'] })
+      toast({ title: 'Saved', description: data.message })
+    },
+    onError: (e: Error) => {
+      toast({ title: 'Save failed', description: e.message, variant: 'destructive' })
     },
   })
 }

@@ -2,7 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, LogOut, Menu, ChevronDown } from 'lucide-react'
+import {
+  Loader2,
+  LogOut,
+  Menu,
+  ChevronDown,
+  LayoutDashboard,
+  BedDouble,
+  HeartPulse,
+  ClipboardList,
+} from 'lucide-react'
 import { useSession, useLogout } from '@/hooks/use-api'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -28,29 +37,72 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { SidebarBrand } from '@/components/dashboard/sidebar'
 import { ReceptionView } from '@/components/views/reception-view'
+import { UpdateBedsView } from '@/components/views/reception-update-beds-view'
+import { UpdateIcuView } from '@/components/views/reception-update-icu-view'
+import { DailyEntryView } from '@/components/views/reception-daily-entry-view'
 import { DisclaimerFooter } from '@/components/dashboard/footer'
+import { useUiStore } from '@/lib/store'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
+
+type RecView = 'dashboard' | 'beds' | 'icu' | 'daily'
+
+const REC_NAV: { id: RecView; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'beds', label: 'Update Beds', icon: BedDouble },
+  { id: 'icu', label: 'Update ICU', icon: HeartPulse },
+  { id: 'daily', label: 'Daily Entry', icon: ClipboardList },
+]
+
+const REC_TITLES: Record<RecView, { title: string; subtitle: string }> = {
+  dashboard: { title: 'Reception Dashboard', subtitle: 'Live capacity overview & patient check-in reference' },
+  beds: { title: 'Update Beds', subtitle: "Update today's ward bed capacity & occupancy" },
+  icu: { title: 'Update ICU', subtitle: "Update today's ICU bed capacity & occupancy" },
+  daily: { title: 'Daily Entry', subtitle: 'Update ward & ICU bed numbers in one place' },
+}
 
 /**
- * Reception shell — a separate, restricted layout for the Reception role.
- * The sidebar shows only the Dashboard item (no Forecast, Departments,
- * Alerts, What-If, or Settings). The header has no "Regenerate data" button
- * (an admin/staff action) and a logout dropdown with confirmation.
+ * Reception shell — restricted layout for the Reception role. Sidebar shows
+ * Dashboard, Update Beds, Update ICU, and Daily Entry. No access to forecast,
+ * analytics, admin, or settings. Logout dropdown with confirmation.
  */
 export function ReceptionShell() {
+  const recView = useUiStore((s) => s.recView)
+  const setRecView = useUiStore((s) => s.setRecView)
+  const mobileOpen = useUiStore((s) => s.mobileOpen)
+  const setMobileOpen = useUiStore((s) => s.setMobileOpen)
+
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">
-      {/* Desktop sidebar — Reception only sees Dashboard */}
+      {/* Desktop sidebar */}
       <aside className="hidden w-[260px] shrink-0 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col">
         <SidebarBrand />
         <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Primary">
-          <div
-            className="group flex items-center gap-3 rounded-lg bg-sidebar-accent px-3 py-2.5 text-sm font-medium text-sidebar-accent-foreground"
-            aria-current="page"
-          >
-            <span className="text-primary text-[18px]">●</span>
-            <span className="flex-1 text-left">Dashboard</span>
-          </div>
+          {REC_NAV.map((item) => {
+            const active = recView === item.id
+            const Icon = item.icon
+            return (
+              <button
+                key={item.id}
+                onClick={() => setRecView(item.id)}
+                className={cn(
+                  'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                  active
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+                )}
+                aria-current={active ? 'page' : undefined}
+              >
+                <Icon
+                  className={cn(
+                    'h-[18px] w-[18px] shrink-0',
+                    active ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
+                  )}
+                />
+                <span className="flex-1 text-left">{item.label}</span>
+              </button>
+            )
+          })}
         </nav>
         <div className="mt-auto border-t border-sidebar-border px-5 py-4">
           <p className="text-[10px] leading-relaxed text-muted-foreground">
@@ -61,9 +113,12 @@ export function ReceptionShell() {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <ReceptionHeader />
+        <ReceptionHeader title={REC_TITLES[recView].title} subtitle={REC_TITLES[recView].subtitle} />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <ReceptionView />
+          {recView === 'dashboard' && <ReceptionView />}
+          {recView === 'beds' && <UpdateBedsView />}
+          {recView === 'icu' && <UpdateIcuView />}
+          {recView === 'daily' && <DailyEntryView />}
         </main>
         <DisclaimerFooter />
       </div>
@@ -71,10 +126,12 @@ export function ReceptionShell() {
   )
 }
 
-function ReceptionHeader() {
+function ReceptionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   const { data } = useSession()
   const user = data?.user
-  const [mobileOpenState, setMobileOpenState] = useState(false)
+  const setRecView = useUiStore((s) => s.setRecView)
+  const setMobileOpen = useUiStore((s) => s.setMobileOpen)
+  const mobileOpen = useUiStore((s) => s.mobileOpen)
   const logout = useLogout()
   const { toast } = useToast()
   const router = useRouter()
@@ -101,8 +158,8 @@ function ReceptionHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
-      {/* Mobile sidebar — Reception only sees Dashboard */}
-      <Sheet open={mobileOpenState} onOpenChange={setMobileOpenState}>
+      {/* Mobile sidebar */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
             <Menu className="h-5 w-5" />
@@ -112,20 +169,37 @@ function ReceptionHeader() {
           <div className="flex h-full flex-col">
             <SidebarBrand />
             <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Primary">
-              <div className="group flex items-center gap-3 rounded-lg bg-sidebar-accent px-3 py-2.5 text-sm font-medium text-sidebar-accent-foreground">
-                <span className="text-primary text-[18px]">●</span>
-                <span className="flex-1 text-left">Dashboard</span>
-              </div>
+              {REC_NAV.map((item) => {
+                const active = useUiStore.getState().recView === item.id
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setRecView(item.id)
+                      setMobileOpen(false)
+                    }}
+                    className={cn(
+                      'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                      active
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+                    )}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0 text-primary" />
+                    <span className="flex-1 text-left">{item.label}</span>
+                  </button>
+                )
+              })}
             </nav>
           </div>
         </SheetContent>
       </Sheet>
 
       <div className="flex flex-1 flex-col">
-        <h1 className="text-base font-semibold tracking-tight sm:text-lg">Reception Dashboard</h1>
-        <p className="hidden text-xs text-muted-foreground sm:block">
-          Live capacity overview &amp; patient check-in reference
-        </p>
+        <h1 className="text-base font-semibold tracking-tight sm:text-lg">{title}</h1>
+        <p className="hidden text-xs text-muted-foreground sm:block">{subtitle}</p>
       </div>
 
       <div className="flex items-center gap-2">

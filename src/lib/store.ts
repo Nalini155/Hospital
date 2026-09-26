@@ -6,6 +6,9 @@ type UiState = {
   // active dashboard view (client-side view switching, stays on `/`)
   view: string
   setView: (v: string) => void
+  // active reception view (Reception shell has its own nav: dashboard/beds/icu/daily)
+  recView: 'dashboard' | 'beds' | 'icu' | 'daily'
+  setRecView: (v: 'dashboard' | 'beds' | 'icu' | 'daily') => void
   // sidebar collapse on desktop
   collapsed: boolean
   toggleCollapsed: () => void
@@ -18,6 +21,8 @@ type UiState = {
 export const useUiStore = create<UiState>((set) => ({
   view: 'overview',
   setView: (v) => set({ view: v, mobileOpen: false }),
+  recView: 'dashboard',
+  setRecView: (v) => set({ recView: v, mobileOpen: false }),
   collapsed: false,
   toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
   setCollapsed: (c) => set({ collapsed: c }),
