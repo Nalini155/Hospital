@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, LogOut, Menu, RefreshCw, ChevronDown } from 'lucide-react'
-import { useSession, useLogout, useRegenerateData } from '@/hooks/use-api'
+import { Loader2, LogOut, Menu, ChevronDown } from 'lucide-react'
+import { useSession, useLogout } from '@/hooks/use-api'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -25,37 +25,60 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from '@/components/ui/sheet'
-import { SidebarNav, SidebarBrand } from '@/components/dashboard/sidebar'
-import { useUiStore } from '@/lib/store'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { SidebarBrand } from '@/components/dashboard/sidebar'
+import { ReceptionView } from '@/components/views/reception-view'
+import { DisclaimerFooter } from '@/components/dashboard/footer'
 import { useToast } from '@/hooks/use-toast'
 
-const VIEW_TITLES: Record<string, { title: string; subtitle: string }> = {
-  overview: { title: 'Dashboard', subtitle: 'Real-time capacity & forecast overview' },
-  forecast: { title: 'Demand Forecast', subtitle: '7-day time-series projection with confidence intervals' },
-  departments: { title: 'Departments', subtitle: 'Ward-level occupancy & forecast breakdown' },
-  alerts: { title: 'Capacity Alerts', subtitle: 'Threshold breaches & resource gap summary' },
-  simulation: { title: 'What-If Simulation', subtitle: 'Model scenarios & department impact' },
-  settings: { title: 'Settings', subtitle: 'Account, data & system configuration' },
+/**
+ * Reception shell — a separate, restricted layout for the Reception role.
+ * The sidebar shows only the Dashboard item (no Forecast, Departments,
+ * Alerts, What-If, or Settings). The header has no "Regenerate data" button
+ * (an admin/staff action) and a logout dropdown with confirmation.
+ */
+export function ReceptionShell() {
+  return (
+    <div className="flex min-h-screen w-full bg-background text-foreground">
+      {/* Desktop sidebar — Reception only sees Dashboard */}
+      <aside className="hidden w-[260px] shrink-0 border-r border-sidebar-border bg-sidebar lg:flex lg:flex-col">
+        <SidebarBrand />
+        <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Primary">
+          <div
+            className="group flex items-center gap-3 rounded-lg bg-sidebar-accent px-3 py-2.5 text-sm font-medium text-sidebar-accent-foreground"
+            aria-current="page"
+          >
+            <span className="text-primary text-[18px]">●</span>
+            <span className="flex-1 text-left">Dashboard</span>
+          </div>
+        </nav>
+        <div className="mt-auto border-t border-sidebar-border px-5 py-4">
+          <p className="text-[10px] leading-relaxed text-muted-foreground">
+            Capacity &amp; operations risk signals only — not medical diagnosis or emergency predictions.
+          </p>
+        </div>
+      </aside>
+
+      {/* Main column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ReceptionHeader />
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <ReceptionView />
+        </main>
+        <DisclaimerFooter />
+      </div>
+    </div>
+  )
 }
 
-export function DashboardHeader() {
+function ReceptionHeader() {
   const { data } = useSession()
   const user = data?.user
-  const view = useUiStore((s) => s.view)
-  const setMobileOpen = useUiStore((s) => s.setMobileOpen)
-  const mobileOpen = useUiStore((s) => s.mobileOpen)
+  const [mobileOpenState, setMobileOpenState] = useState(false)
   const logout = useLogout()
-  const regenerate = useRegenerateData()
   const { toast } = useToast()
   const router = useRouter()
   const [loggingOut, setLoggingOut] = useState(false)
-
-  const meta = VIEW_TITLES[view] ?? VIEW_TITLES.overview
 
   const initials = user
     ? user.name
@@ -66,12 +89,7 @@ export function DashboardHeader() {
         .toUpperCase()
     : '?'
 
-  const roleLabel =
-    user?.role === 'ADMIN'
-      ? 'Administrator'
-      : user?.role === 'RECEPTION'
-        ? 'Reception'
-        : 'Hospital Staff'
+  const roleLabel = 'Reception'
 
   const doLogout = async () => {
     setLoggingOut(true)
@@ -83,8 +101,8 @@ export function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur-md sm:px-6">
-      {/* Mobile sidebar */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+      {/* Mobile sidebar — Reception only sees Dashboard */}
+      <Sheet open={mobileOpenState} onOpenChange={setMobileOpenState}>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu">
             <Menu className="h-5 w-5" />
@@ -93,36 +111,31 @@ export function DashboardHeader() {
         <SheetContent side="left" className="w-72 p-0">
           <div className="flex h-full flex-col">
             <SidebarBrand />
-            <SidebarNav onNavigate={() => setMobileOpen(false)} />
+            <nav className="flex flex-1 flex-col gap-1 px-3 py-4" aria-label="Primary">
+              <div className="group flex items-center gap-3 rounded-lg bg-sidebar-accent px-3 py-2.5 text-sm font-medium text-sidebar-accent-foreground">
+                <span className="text-primary text-[18px]">●</span>
+                <span className="flex-1 text-left">Dashboard</span>
+              </div>
+            </nav>
           </div>
         </SheetContent>
       </Sheet>
 
       <div className="flex flex-1 flex-col">
-        <h1 className="text-base font-semibold tracking-tight sm:text-lg">{meta.title}</h1>
-        <p className="hidden text-xs text-muted-foreground sm:block">{meta.subtitle}</p>
+        <h1 className="text-base font-semibold tracking-tight sm:text-lg">Reception Dashboard</h1>
+        <p className="hidden text-xs text-muted-foreground sm:block">
+          Live capacity overview &amp; patient check-in reference
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden sm:inline-flex"
-          onClick={() => regenerate.mutate()}
-          disabled={regenerate.isPending}
-        >
-          {regenerate.isPending ? (
-            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-3.5 w-3.5" />
-          )}
-          Regenerate data
-        </Button>
-
         <AlertDialog>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 rounded-full border border-transparent py-1 pl-1 pr-2.5 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="User account menu">
+              <button
+                className="flex items-center gap-2 rounded-full border border-transparent py-1 pl-1 pr-2.5 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="User account menu"
+              >
                 <Avatar className="h-8 w-8 border border-border">
                   <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                     {initials}
@@ -143,10 +156,6 @@ export function DashboardHeader() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => useUiStore.getState().setView('settings')}>
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <AlertDialogTrigger asChild>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
@@ -163,8 +172,7 @@ export function DashboardHeader() {
             <AlertDialogHeader>
               <AlertDialogTitle>Sign out of CareFlow?</AlertDialogTitle>
               <AlertDialogDescription>
-                You will need to sign in again to access the dashboard. Any unsaved
-                what-if scenario adjustments will be cleared.
+                You will need to sign in again to access the Reception dashboard.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

@@ -15,7 +15,7 @@ model User {
   email        String   @unique
   name         String
   passwordHash String
-  role         String   @default("STAFF") // ADMIN | STAFF
+  role         String   @default("STAFF") // ADMIN | STAFF | RECEPTION
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

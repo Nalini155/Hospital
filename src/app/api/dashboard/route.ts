@@ -8,6 +8,18 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  // The full analytics dashboard (forecast models, resource gaps, alerts with
+  // thresholds) is restricted to operational/admin/staff roles. Reception users
+  // get their own simplified endpoint at /api/reception.
+  if (session.role === 'RECEPTION') {
+    return NextResponse.json(
+      {
+        error: 'Your role does not have access to the analytics dashboard. Use the Reception dashboard.',
+        code: 'FORBIDDEN_ROLE',
+      },
+      { status: 403 },
+    )
+  }
 
   // Make sure a default/seed dataset exists so the dashboard never renders an
   // empty/error state on a fresh database. ensureSeedData is idempotent: it only

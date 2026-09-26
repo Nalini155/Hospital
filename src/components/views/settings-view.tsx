@@ -42,7 +42,12 @@ export function SettingsView() {
         .join('')
         .toUpperCase()
     : '?'
-  const roleLabel = user?.role === 'ADMIN' ? 'Administrator' : 'Hospital Staff'
+  const roleLabel =
+    user?.role === 'ADMIN'
+      ? 'Administrator'
+      : user?.role === 'RECEPTION'
+        ? 'Reception'
+        : 'Hospital Staff'
 
   const recordCount = historical.data?.count ?? null
 

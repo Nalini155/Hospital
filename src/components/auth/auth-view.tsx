@@ -36,7 +36,7 @@ const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['ADMIN', 'STAFF']),
+  role: z.enum(['ADMIN', 'STAFF', 'RECEPTION']),
 })
 
 type LoginValues = z.infer<typeof loginSchema>
@@ -45,7 +45,7 @@ type SignupValues = z.infer<typeof signupSchema>
 export function AuthView() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [showPassword, setShowPassword] = useState(false)
-  const [role, setRole] = useState<'ADMIN' | 'STAFF'>('STAFF')
+  const [role, setRole] = useState<'ADMIN' | 'STAFF' | 'RECEPTION'>('STAFF')
   // Inline error shown directly above the submit button (not a toast).
   const [authError, setAuthError] = useState<string | null>(null)
 
@@ -290,7 +290,7 @@ export function AuthView() {
                   <Select
                     value={role}
                     onValueChange={(v) => {
-                      const r = v as 'ADMIN' | 'STAFF'
+                      const r = v as 'ADMIN' | 'STAFF' | 'RECEPTION'
                       setRole(r)
                       signupForm.setValue('role', r)
                     }}
@@ -301,6 +301,7 @@ export function AuthView() {
                     <SelectContent>
                       <SelectItem value="ADMIN">Administrator</SelectItem>
                       <SelectItem value="STAFF">Hospital Staff</SelectItem>
+                      <SelectItem value="RECEPTION">Reception</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>

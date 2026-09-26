@@ -348,3 +348,30 @@ Stage Summary:
 - Root cause was a cross-origin/gateway cookie problem: the httpOnly SameSite=lax cookie set on localhost wasn't sent back when the browser viewed the app through the Caddy gateway Preview Panel, causing 401 on every authenticated API call.
 - Definitive fix: dual-mode auth. The JWT is returned in the login/signup response body and stored in localStorage; the client sends it as an Authorization: Bearer header on every API call; the backend reads the token from EITHER the cookie OR the header. This works in all access contexts.
 - Dashboard now loads with real data automatically after login — no 401, no retry needed.
+
+---
+Task ID: 13 (Reception role + access control)
+Agent: orchestrator (main)
+Task: Add Reception role with restricted dashboard + role-based access control
+
+Work Log:
+- Added RECEPTION to the role union: src/lib/types.ts (Role = ADMIN|STAFF|RECEPTION), prisma schema comment, signup API zod enum (z.enum(['ADMIN','STAFF','RECEPTION'])), and the signup form Select (Administrator / Hospital Staff / Reception). The Prisma `role` column is already a plain String, so no migration needed.
+- Backend role guard (src/lib/role-guard.ts): requireNonReception() returns the session OR a 401/403 NextResponse. Applied to /api/dashboard, /api/forecast, /api/departments, /api/alerts, /api/simulate, /api/data/historical (GET + POST regenerate). Reception users get a 403 FORBIDDEN_ROLE on all analytics/regenerate endpoints.
+- New /api/reception endpoint (src/app/api/reception/route.ts): returns ONLY the simplified data Reception needs — today's overview (ward occ %, ICU occ %, available beds, available ICU beds), a single capacity alert (warning ≥85% / critical ≥90%), and a department availability table (Department | Available Beds | Occupancy | Status Normal/Near Full/Full). Available to all authenticated users.
+- Frontend routing by role (src/app/page.tsx): if user.role === 'RECEPTION' → <ReceptionShell/>, else → <DashboardShell/>. Reception never mounts the full analytics shell.
+- ReceptionShell (src/components/dashboard/reception-shell.tsx): separate layout with a sidebar showing ONLY "Dashboard" (no Forecast/Departments/Alerts/What-If/Settings), a header with no "Regenerate data" button (admin action), and a logout dropdown with confirmation. Disclaimer footer preserved.
+- ReceptionView (src/components/views/reception-view.tsx): simplified dashboard — "Today's Overview" heading, capacity alert banner (amber/red or green "within normal range"), 4 simple stat cards (Ward Occupancy %, ICU Occupancy %, Available Beds, Available ICU Beds), and a "Quick Patient Check-in Reference" table with Department/Available Beds/Occupancy/Status. NO charts, NO forecast, NO resource gap, NO simulation, NO admin/settings.
+- Added useReception hook + ReceptionOverview type to src/hooks/use-api.ts.
+- Updated header + settings role labels to render "Reception" for RECEPTION users.
+- Seeded demo accounts: reception@careflow.health / reception123 (RECEPTION) and kept admin@careflow.health / careflow123 (ADMIN). scripts/seed-demo.ts now seeds both, idempotent.
+- Verification (agent-browser + backend curl):
+  - Backend: Reception login 200 → /api/reception 200 (today's data + alert + 4 depts), /api/dashboard 403, /api/forecast 403, /api/departments 403, /api/alerts 403, /api/simulate 403, regenerate POST 403. Admin: /api/dashboard 200, /api/reception 200.
+  - Browser: Reception login → "Reception Dashboard" ✓, sidebar shows only "Dashboard" ✓, 4 stat cards (Ward 84% / ICU 78% / Available 95 / ICU 7) ✓, Quick Check-in table with all 4 departments + Status ✓, 0 chart surfaces ✓, no Regenerate button ✓, no forecast/gap/sim/what-if/settings nav ✓. Logout → auth form ✓ (token cleared).
+  - Browser: Admin login → full dashboard ✓, 6 chart surfaces ✓, sidebar shows all items (Dashboard | Forecast | Departments | Alerts | What-If | Settings) ✓, Regenerate button present ✓.
+  - VLM confirmed Reception dashboard: header "Reception Dashboard", 4 simple stat cards, Quick Patient Check-in table with Emergency/ICU/General Ward/Pediatrics + status, NO complex charts/forecast/gap/sim/admin, sidebar only "Dashboard", disclaimer footer present.
+  - No console errors. Lint clean.
+
+Stage Summary:
+- Reception role fully implemented end-to-end: signup with Reception role → login → lands on a separate simplified Reception dashboard with today's overview cards, capacity alert, and quick check-in table. Reception sidebar shows only Dashboard + logout. Reception users cannot access the full analytics dashboard, forecast, departments, alerts, what-if simulation, settings, or regenerate — both client-side (never mounts the full shell) and backend-enforced (403 FORBIDDEN_ROLE on all those endpoints). Admin/Staff retain full access.
+- Demo accounts: admin@careflow.health / careflow123 (Admin, full dashboard) and reception@careflow.health / reception123 (Reception, simplified dashboard).
+- Same professional design language (deep teal-blue, card-based, Inter font, disclaimer footer).

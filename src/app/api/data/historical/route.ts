@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
 import { getHistoricalSeries } from '@/lib/forecast'
 import { ensureSeedData, resetSeedData } from '@/lib/seed'
+import { requireNonReception } from '@/lib/role-guard'
 
 export async function GET(request: Request) {
-  const session = await getAuthUser()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const guard = await requireNonReception()
+  if (guard instanceof NextResponse) return guard
+
   try {
     await ensureSeedData()
   } catch (e) {
@@ -40,14 +39,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST() {
-  const session = await getAuthUser()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const guard = await requireNonReception()
+  if (guard instanceof NextResponse) return guard
+
   try {
     await resetSeedData(365)
-    // Verify the reseed actually produced data so we can return a precise error
-    // if (for example) the DB write failed silently.
     return NextResponse.json({
       ok: true,
       message: 'Dataset regenerated with 365 days of synthetic hospital data',

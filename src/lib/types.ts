@@ -1,10 +1,12 @@
 // Shared types mirroring API responses
 
+export type Role = 'ADMIN' | 'STAFF' | 'RECEPTION'
+
 export type AuthUser = {
   id: string
   name: string
   email: string
-  role: 'ADMIN' | 'STAFF'
+  role: Role
 }
 
 export type DashboardView =

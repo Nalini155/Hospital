@@ -156,6 +156,49 @@ export function useDashboard() {
   })
 }
 
+// ---------- Reception dashboard (simplified) ----------
+export type ReceptionOverview = {
+  today: {
+    date: string
+    occupancyPct: number
+    icuOccupancyPct: number
+    availableBeds: number
+    availableIcu: number
+  }
+  alert: {
+    active: boolean
+    level: 'warning' | 'critical' | 'none'
+    message: string
+  } | null
+  departments: {
+    department: string
+    availableBeds: number
+    capacity: number
+    occupancyPct: number
+    status: 'Normal' | 'Near Full' | 'Full'
+  }[]
+}
+
+export function useReception() {
+  return useQuery<ReceptionOverview>({
+    queryKey: ['reception'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/reception')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const err = new Error(
+          data.error ?? 'Failed to load reception dashboard',
+        ) as Error & { code?: string; status?: number }
+        err.code = data.code
+        err.status = res.status
+        throw err
+      }
+      return data as ReceptionOverview
+    },
+    retry: 2,
+  })
+}
+
 export function useForecast(metric: 'admissions' | 'bedsUsed' | 'icuUsed' = 'admissions', horizon = 7) {
   return useQuery<{
     metric: string

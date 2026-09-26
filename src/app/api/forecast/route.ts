@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
-import { getAuthUser } from '@/lib/auth'
 import { getHistoricalSeries, forecastSeries } from '@/lib/forecast'
 import { ensureSeedData } from '@/lib/seed'
+import { requireNonReception } from '@/lib/role-guard'
 
 export async function GET(request: Request) {
-  const session = await getAuthUser()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const guard = await requireNonReception()
+  if (guard instanceof NextResponse) return guard
+
   try {
     await ensureSeedData()
   } catch (e) {
