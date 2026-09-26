@@ -269,8 +269,14 @@ function projectBeds(
 
 export async function getDashboardOverview(horizon = 7): Promise<DashboardOverview> {
   const history = await getHistoricalSeries(120)
+  if (history.length === 0) {
+    throw new Error('No historical hospital data available.')
+  }
   const admissions = history.map((h) => h.admissions)
   const last = history[history.length - 1]
+  if (!last) {
+    throw new Error('Historical data is incomplete (no latest record).')
+  }
   const bedsCapacity = last.bedsCapacity
   const icuCapacity = last.icuCapacity
 

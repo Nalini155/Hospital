@@ -195,8 +195,11 @@ export function generateSyntheticData(
 
 export async function ensureSeedData(): Promise<void> {
   const count = await db.hospitalDaily.count()
-  if (count > 0) return
-  await seedDatabase()
+  // We expect at least 14 days of data for the forecasting model (weekly seasonality
+  // + grid search). If the dataset is missing or only partially seeded (e.g. an
+  // interrupted previous seed), reseed so the dashboard always has enough data.
+  if (count >= 14) return
+  await resetSeedData(365)
 }
 
 export async function seedDatabase(days = 365): Promise<void> {
@@ -228,6 +231,7 @@ export async function seedDatabase(days = 365): Promise<void> {
 }
 
 export async function resetSeedData(days = 365): Promise<void> {
+  // Delete in a safe order and reseed. Wrapped so callers see a clean error.
   await db.departmentDaily.deleteMany({})
   await db.hospitalDaily.deleteMany({})
   await seedDatabase(days)

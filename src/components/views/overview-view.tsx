@@ -8,10 +8,13 @@ import {
   ShieldCheck,
   CircleAlert,
   Hospital,
+  RotateCw,
+  Loader2,
 } from 'lucide-react'
 import { useDashboard } from '@/hooks/use-api'
 import { SectionCard, KpiCard } from '@/components/views/shared'
 import { ForecastChart } from '@/components/charts/forecast-chart'
+import { Button } from '@/components/ui/button'
 import {
   Table,
   TableBody,
@@ -27,14 +30,36 @@ import { formatLongDate, signed } from '@/lib/format'
 import type { DashboardOverview } from '@/lib/types'
 
 export function OverviewView() {
-  const { data, isLoading, isError } = useDashboard()
+  const { data, isLoading, isError, error, refetch, isFetching } = useDashboard()
 
   if (isError) {
+    const reason =
+      error instanceof Error ? error.message : 'Unknown error.'
     return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        <CircleAlert className="h-8 w-8 text-destructive" />
-        <p>Failed to load dashboard data.</p>
-        <p className="text-xs">Try regenerating the dataset from the header.</p>
+      <div className="flex min-h-[20rem] flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center">
+        <CircleAlert className="h-10 w-10 text-destructive" />
+        <p className="text-base font-semibold text-foreground">
+          Failed to load dashboard data
+        </p>
+        <p className="max-w-md text-sm text-muted-foreground">{reason}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            {isFetching ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCw className="mr-2 h-4 w-4" />
+            )}
+            Retry
+          </Button>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          If the error persists, try regenerating the dataset from the header button.
+        </p>
       </div>
     )
   }

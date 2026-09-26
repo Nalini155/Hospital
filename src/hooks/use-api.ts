@@ -112,9 +112,19 @@ export function useDashboard() {
     queryKey: ['dashboard'],
     queryFn: async () => {
       const res = await fetch('/api/dashboard', { cache: 'no-store' })
-      if (!res.ok) throw new Error('Failed to load dashboard')
-      return res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const err = new Error(
+          data.error ?? 'Failed to load dashboard',
+        ) as Error & { code?: string }
+        err.code = data.code
+        throw err
+      }
+      return data as DashboardOverview
     },
+    // Keep retrying transient failures so a one-off seed/forecast hiccup
+    // doesn't strand the user on an error screen.
+    retry: 2,
   })
 }
 
@@ -190,8 +200,15 @@ export function useRegenerateData() {
   return useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/data/historical', { method: 'POST' })
-      if (!res.ok) throw new Error('Failed to regenerate dataset')
-      return res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const err = new Error(data.error ?? 'Failed to regenerate dataset') as Error & {
+          code?: string
+        }
+        err.code = data.code
+        throw err
+      }
+      return data
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dashboard'] })
@@ -199,7 +216,18 @@ export function useRegenerateData() {
       qc.invalidateQueries({ queryKey: ['departments'] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['historical'] })
-      toast({ title: 'Dataset regenerated', description: '365 days of synthetic hospital data loaded.' })
+      toast({
+        title: 'Dataset regenerated',
+        description: '365 days of synthetic hospital data loaded.',
+      })
+    },
+    onError: (e: Error) => {
+      // Show the precise backend reason (seed failed / DB write error / etc.)
+      toast({
+        title: 'Could not regenerate dataset',
+        description: e.message,
+        variant: 'destructive',
+      })
     },
   })
 }

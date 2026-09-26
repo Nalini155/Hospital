@@ -252,3 +252,34 @@ Stage Summary:
 - Auth fixed end-to-end: specific inline errors (no account / wrong password / server error / email exists), users persist in SQLite, demo admin reliably works (password reset), fresh signup→logout→login-back cycle verified.
 - Login page redesigned to professional SaaS spec: centered 420px card, logo+name+tagline, tabs, icon inputs, show/hide password, inline red error banner above submit, forgot-password link, demo hint, footer disclaimer, fully responsive. VLM-confirmed clean and professional.
 - Lint clean. No console errors.
+
+---
+Task ID: 10 (dashboard auto-load fix)
+Agent: orchestrator (main)
+Task: Debug & fix "Failed to load dashboard data" + ensure auto-load after login
+
+Work Log:
+- Diagnosed: /api/dashboard returned 200 with full data via curl (DB had 365 records). Root cause of the user-facing error: getDashboardOverview did `last = history[history.length-1]` with NO guard — if the DB was empty or partially seeded (e.g. an interrupted seed, or a fresh database), `last` was undefined and `last.bedsCapacity` threw TypeError → 500 → frontend "Failed to load dashboard data". The "Regenerate" button didn't help because (a) it had no try/catch so failures were silent/generic, (b) ensureSeedData only reseeded when count === 0, not when the dataset was partial (<14 days, too few for the forecast model's weekly seasonality + grid search).
+- Fixed ensureSeedData (src/lib/seed.ts): now reseeds when count < 14 (not just == 0), so a partial/broken dataset is automatically repaired. Wrapped resetSeedData so callers get a clean error.
+- Guarded getDashboardOverview (src/lib/forecast.ts): throws a clear error ("No historical hospital data available." / "Historical data is incomplete...") instead of a cryptic TypeError when history is empty.
+- Hardened all data API routes with try/catch + specific error codes:
+  - /api/dashboard: SEED_FAILED, FORECAST_FAILED (returns the actual reason)
+  - /api/departments, /api/alerts, /api/forecast, /api/data/historical (GET+POST), /api/simulate: each wrapped ensureSeedData + the computation in try/catch returning {error, code} with the real message.
+- Improved frontend:
+  - useDashboard hook: captures the backend error message (data.error) and attaches data.code; retry: 2 so a transient seed/forecast hiccup auto-recovers instead of stranding on the error screen.
+  - useRegenerateData hook: surfaces the precise backend reason in a destructive toast ("Could not regenerate dataset. <reason>"), not a generic failure.
+  - OverviewView error state: now a proper error card showing the actual error message + a "Retry" button (RotateCw/Loader2) + hint, instead of a generic "Try regenerating from the header".
+- Verification (agent-browser, fresh empty DB scenario):
+  - Wiped hospitalDaily + departmentDaily to 0 (simulating broken state).
+  - Logged in via autofill — NO manual regenerate clicked.
+  - Dashboard auto-loaded: KPIs (Ward 84%, ICU 78%, Available 95, Expected 137), amber "ICU capacity pressure 88%" alert banner, 6 chart surfaces, resource gap table populated. /api/dashboard → 200. ✓
+  - Forecast view: 7-day detail table ✓. Departments: all 4 present ✓. Alerts view ✓.
+  - Regenerate button (manual) still works → dashboard stays loaded ✓.
+  - VLM confirmed: KPIs, amber alert, charts with CI band, gap table all render.
+  - DB reseeded to 365/1460 records automatically. No console errors. Lint clean.
+
+Stage Summary:
+- Dashboard now reliably auto-loads with sample data immediately after login — no manual regeneration needed. The seed runs automatically on every dashboard/alerts/departments/forecast/historical/simulate request when the dataset is missing or partial (<14 days).
+- "Regenerate data" button now shows the actual failure reason in a toast if it fails.
+- OverviewView error state is actionable: shows the real error + Retry button + hint.
+- Root cause was unguarded array access on empty data + a too-strict seed threshold + silent error swallowing — all fixed with guards, try/catch, and a <14-day reseed threshold.

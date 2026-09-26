@@ -8,7 +8,31 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  await ensureSeedData()
-  const departments = await getDepartmentForecasts(7)
-  return NextResponse.json({ departments })
+  try {
+    await ensureSeedData()
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          'Could not initialize the sample dataset. ' +
+          (e instanceof Error ? e.message : 'Unknown seed error.'),
+        code: 'SEED_FAILED',
+      },
+      { status: 500 },
+    )
+  }
+  try {
+    const departments = await getDepartmentForecasts(7)
+    return NextResponse.json({ departments })
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          'Failed to load department forecasts. ' +
+          (e instanceof Error ? e.message : 'Unknown error.'),
+        code: 'DEPT_FAILED',
+      },
+      { status: 500 },
+    )
+  }
 }

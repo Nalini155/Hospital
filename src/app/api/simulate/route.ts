@@ -8,12 +8,24 @@ export async function POST(request: Request) {
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  await ensureSeedData()
+  try {
+    await ensureSeedData()
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          'Could not initialize the sample dataset. ' +
+          (e instanceof Error ? e.message : 'Unknown seed error.'),
+        code: 'SEED_FAILED',
+      },
+      { status: 500 },
+    )
+  }
   let body: Partial<SimulationInput>
   try {
     body = await request.json()
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid JSON body', code: 'BAD_REQUEST' }, { status: 400 })
   }
   const input: SimulationInput = {
     bedCapacityDelta: Number(body.bedCapacityDelta ?? 0),
@@ -22,6 +34,18 @@ export async function POST(request: Request) {
     losDelta: Number(body.losDelta ?? 0),
     horizon: Math.min(30, Math.max(1, Number(body.horizon ?? 7))),
   }
-  const result = await runSimulation(input)
-  return NextResponse.json({ input, result })
+  try {
+    const result = await runSimulation(input)
+    return NextResponse.json({ input, result })
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error:
+          'Simulation failed. ' +
+          (e instanceof Error ? e.message : 'Unknown error.'),
+        code: 'SIMULATE_FAILED',
+      },
+      { status: 500 },
+    )
+  }
 }
