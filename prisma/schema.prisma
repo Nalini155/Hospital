@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("STAFF") // ADMIN | STAFF
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// Daily aggregate hospital operations record
+model HospitalDaily {
+  id           String   @id @default(cuid())
+  date         String   @unique // ISO yyyy-mm-dd
+  admissions   Int
+  discharges   Int
+  bedsUsed     Int
+  bedsCapacity Int
+  icuUsed      Int
+  icuCapacity  Int
+  createdAt    DateTime @default(now())
+}
+
+/// Department-level daily snapshot
+model DepartmentDaily {
+  id           String   @id @default(cuid())
+  date         String // ISO yyyy-mm-dd
+  department   String // Emergency | ICU | General Ward | Pediatrics
+  admissions   Int
+  bedsUsed     Int
+  bedsCapacity Int
+  icuUsed      Int // ICU beds used by this dept (0 except ICU)
+  icuCapacity  Int
+  createdAt    DateTime @default(now())
+
+  @@unique([date, department])
+}
