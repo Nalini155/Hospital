@@ -52,6 +52,7 @@ export function GoogleSignInFlow({
 
   const [step, setStep] = useState<Step>('chooser')
   const [selected, setSelected] = useState<MockGoogleAccount | null>(null)
+  const [customEmail, setCustomEmail] = useState('')
   const [code, setCode] = useState('')
   const [demoCode, setDemoCode] = useState<string | null>(null)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -60,6 +61,7 @@ export function GoogleSignInFlow({
   const reset = () => {
     setStep('chooser')
     setSelected(null)
+    setCustomEmail('')
     setCode('')
     setDemoCode(null)
     setLocalError(null)
@@ -86,6 +88,25 @@ export function GoogleSignInFlow({
     setLocalError(null)
     setSelected(acc)
     sendCode.mutate(acc.email, {
+      onSuccess: (data) => {
+        setDemoCode(data.demoCode)
+        setStep('code')
+      },
+      onError: (e: AuthError) => setLocalError(e.message),
+    })
+  }
+
+  const onUseAnother = (email: string) => {
+    const normalized = email.toLowerCase().trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      setLocalError('Enter a valid email address.')
+      return
+    }
+    setLocalError(null)
+    // Synthetic account object so the code step shows the entered email.
+    const initials = normalized.slice(0, 2).toUpperCase()
+    setSelected({ email: normalized, name: normalized.split('@')[0], initials, role: 'STAFF' })
+    sendCode.mutate(normalized, {
       onSuccess: (data) => {
         setDemoCode(data.demoCode)
         setStep('code')
@@ -159,6 +180,9 @@ export function GoogleSignInFlow({
               accounts={initiate.data?.accounts ?? []}
               loading={initiate.isFetching || (open && !initiate.data && !initiate.isError)}
               onPick={onPickAccount}
+              onUseAnother={onUseAnother}
+              customEmail={customEmail}
+              setCustomEmail={setCustomEmail}
               sending={sendCode.isPending}
               sendingEmail={sendCode.variables}
               error={localError}
@@ -193,6 +217,9 @@ function ChooserStep({
   accounts,
   loading,
   onPick,
+  onUseAnother,
+  customEmail,
+  setCustomEmail,
   sending,
   sendingEmail,
   error,
@@ -200,10 +227,14 @@ function ChooserStep({
   accounts: MockGoogleAccount[]
   loading: boolean
   onPick: (a: MockGoogleAccount) => void
+  onUseAnother: (email: string) => void
+  customEmail: string
+  setCustomEmail: (v: string) => void
   sending: boolean
   sendingEmail?: string
   error: string | null
 }) {
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customEmail)
   return (
     <div>
       <h2 className="text-base font-semibold text-foreground">Choose an account</h2>
@@ -242,6 +273,40 @@ function ChooserStep({
           })}
         </div>
       )}
+
+      {/* Use another (personal) Google account */}
+      <div className="mt-4 border-t border-border/60 pt-4">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          Use another account (your personal Google email)
+        </p>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@gmail.com"
+              aria-label="Another Google account email"
+              className="h-11 pl-10"
+              value={customEmail}
+              onChange={(e) => setCustomEmail(e.target.value)}
+              disabled={sending}
+            />
+          </div>
+          <Button
+            type="button"
+            onClick={() => onUseAnother(customEmail)}
+            disabled={sending || !emailValid}
+            className="h-11"
+          >
+            {sending && !accounts.some((a) => a.email === sendingEmail) ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            Send code
+          </Button>
+        </div>
+      </div>
 
       <div className="mt-4 flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5 shrink-0" />

@@ -453,3 +453,30 @@ Stage Summary:
 - Google sign-in is a fully functional 3-step flow: Continue with Google → "Choose an account" (3 mock Google accounts) → pick one → 6-digit verification code "sent to email" (shown in a demo banner) → enter code → verify → logged in → dashboard opens. Works end-to-end with real JWT token issuance.
 - Get Started hero page enhanced with stats row, how-it-works steps, trust badges, and secondary CTA — professional SaaS landing experience.
 - All three sections confirmed working: Reception data entry (Update Beds/ICU/Daily Entry with validation + cross-dashboard sync), login page redesign (hero + Get Started + Google flow + email/password), zero console errors.
+
+---
+Task ID: 16 (personal email Google flow + Reception Patients update)
+Agent: orchestrator (main)
+Task: Allow personal Google email + verification code login; add Update Patients to Reception menu
+
+Work Log:
+- Google flow — personal email support:
+  - /api/auth/google/send-code: removed the mock-only restriction; now accepts ANY email and issues a 6-digit code. Returns demoCode (sandbox can't send real email).
+  - /api/auth/google/verify: removed the mock-only check; verifies the code, find-or-creates a CareFlow user for any email. New emails get STAFF role + a derived display name (part before @, title-cased). Known mock accounts keep their configured role.
+  - GoogleSignInFlow UI: added "Use another account (your personal Google email)" section to the chooser with an email input + "Send code" button. onUseAnother creates a synthetic account for the entered email and proceeds to the code step. Validation rejects invalid emails.
+- Reception — Update Patients:
+  - /api/reception/update-patients (GET + POST): updates today's HospitalDaily admissions/discharges (and optionally a specific DepartmentDaily's admissions). Validation: non-negative, max 10000. Logs 'update_patients' activity.
+  - reception-update-patients-view.tsx: form with Department (optional, "All departments" default), Admissions, Discharges, auto Net change, Save button + validation + success/error. Current patient flow card.
+  - Reception sidebar now has 5 items: Dashboard | Update Beds | Update ICU | Update Patients | Daily Entry. Daily Entry combines all three forms.
+  - useReceptionPatients + useUpdatePatients hooks; invalidates dashboard/departments/admin-overview so the main dashboard reflects updated admissions in real time.
+- Verification (backend curl):
+  - Personal email Google flow: send-code to my.personal@gmail.com → 200 + code; verify → 200, creates "My Personal" STAFF user + token ✓.
+  - Reception Patients: GET current (113/107) → POST update (150/140) → "Patients updated" ✓; negative → 400 ✓; admin dashboard reflects admissions: 150 ✓.
+- Verification (agent-browser):
+  - Personal email Google flow: Get Started → Continue with Google → chooser → enter "my.personal@gmail.com" + Send code → code step shows the email + demo code (784330) → fill + verify → POST /google/verify 200 → dashboard loads ✓ → token PRESENT ✓.
+  - Reception: login → sidebar shows "Dashboard | Update Beds | Update ICU | Update Patients | Daily Entry" ✓ → click Update Patients → "Update Patients" view with patient entry form ✓.
+  - Zero console errors. Lint clean.
+
+Stage Summary:
+- Google sign-in now supports ANY personal email: click "Continue with Google" → either pick a listed account or enter your own email → a 6-digit code is sent (shown in a demo banner) → enter it → logged in → dashboard opens.
+- Reception menu now has Update Beds, Update ICU, Update Patients (+ Daily Entry combined), so reception staff can update bed/ICU/patient numbers that reflect across the Admin/main dashboard in real time. Admin dashboard unchanged (still has forecast etc.).

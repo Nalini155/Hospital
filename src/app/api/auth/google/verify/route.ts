@@ -13,7 +13,9 @@ const schema = z.object({
 /**
  * POST /api/auth/google/verify — user entered the verification code. Verify
  * it, then find-or-create a CareFlow user for that email and issue a real
- * session token. The user is logged in exactly like a real OAuth success.
+ * session token. Any email is accepted so users can sign in with their own
+ * personal Google account. New emails get a STAFF role; known mock accounts
+ * keep their configured role (ADMIN/RECEPTION/STAFF).
  */
 export async function POST(request: Request) {
   let body: unknown
@@ -35,15 +37,6 @@ export async function POST(request: Request) {
   const email = parsed.data.email.toLowerCase().trim()
   const code = parsed.data.code
 
-  // Only known mock accounts can complete the flow.
-  const account = MOCK_GOOGLE_ACCOUNTS.find((a) => a.email.toLowerCase() === email)
-  if (!account) {
-    return NextResponse.json(
-      { error: 'This Google account is not authorized.', code: 'ACCOUNT_NOT_ALLOWED' },
-      { status: 403 },
-    )
-  }
-
   if (!verifyCode(email, code)) {
     return NextResponse.json(
       {
@@ -54,17 +47,19 @@ export async function POST(request: Request) {
     )
   }
 
-  // Find-or-create the CareFlow user for this Google account.
+  // Find-or-create the CareFlow user. Known mock accounts keep their configured
+  // role; any other (personal) email gets STAFF role by default.
+  const knownAccount = MOCK_GOOGLE_ACCOUNTS.find((a) => a.email.toLowerCase() === email)
   let user = await db.user.findUnique({ where: { email } }).catch(() => null)
   if (!user) {
-    // Create a password-less account (random hash; can't log in via password,
-    // only via Google). Assign the role from the mock account config.
+    const name = knownAccount?.name ?? email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    const role = knownAccount?.role ?? 'STAFF'
     user = await db.user.create({
       data: {
-        name: account.name,
+        name,
         email,
-        passwordHash: hashPassword(`google-${account.email}-${Date.now()}-${Math.random()}`),
-        role: account.role,
+        passwordHash: hashPassword(`google-${email}-${Date.now()}-${Math.random()}`),
+        role,
         active: true,
       },
     })

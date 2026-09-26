@@ -609,3 +609,48 @@ export function useUpdateIcu() {
     },
   })
 }
+
+// ---------- Reception patient (admissions/discharges) entry ----------
+export function useReceptionPatients() {
+  return useQuery<{ today: string; admissions: number; discharges: number }>({
+    queryKey: ['reception-patients'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/reception/update-patients')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to load patient data')
+      return data as { today: string; admissions: number; discharges: number }
+    },
+  })
+}
+
+export function useUpdatePatients() {
+  const qc = useQueryClient()
+  const { toast } = useToast()
+  return useMutation({
+    mutationFn: async (vars: {
+      admissions: number
+      discharges: number
+      department?: 'Emergency' | 'ICU' | 'General Ward' | 'Pediatrics'
+    }) => {
+      const res = await apiFetch('/api/reception/update-patients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save patient data')
+      return data as { ok: boolean; message: string }
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['reception'] })
+      qc.invalidateQueries({ queryKey: ['reception-patients'] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['admin-overview'] })
+      toast({ title: 'Saved', description: data.message })
+    },
+    onError: (e: Error) => {
+      toast({ title: 'Save failed', description: e.message, variant: 'destructive' })
+    },
+  })
+}

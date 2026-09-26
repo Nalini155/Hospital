@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   BedDouble,
   HeartPulse,
+  Users,
   ClipboardList,
 } from 'lucide-react'
 import { useSession, useLogout } from '@/hooks/use-api'
@@ -39,18 +40,20 @@ import { SidebarBrand } from '@/components/dashboard/sidebar'
 import { ReceptionView } from '@/components/views/reception-view'
 import { UpdateBedsView } from '@/components/views/reception-update-beds-view'
 import { UpdateIcuView } from '@/components/views/reception-update-icu-view'
+import { UpdatePatientsView } from '@/components/views/reception-update-patients-view'
 import { DailyEntryView } from '@/components/views/reception-daily-entry-view'
 import { DisclaimerFooter } from '@/components/dashboard/footer'
 import { useUiStore } from '@/lib/store'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
-type RecView = 'dashboard' | 'beds' | 'icu' | 'daily'
+type RecView = 'dashboard' | 'beds' | 'icu' | 'patients' | 'daily'
 
 const REC_NAV: { id: RecView; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'beds', label: 'Update Beds', icon: BedDouble },
   { id: 'icu', label: 'Update ICU', icon: HeartPulse },
+  { id: 'patients', label: 'Update Patients', icon: Users },
   { id: 'daily', label: 'Daily Entry', icon: ClipboardList },
 ]
 
@@ -58,7 +61,8 @@ const REC_TITLES: Record<RecView, { title: string; subtitle: string }> = {
   dashboard: { title: 'Reception Dashboard', subtitle: 'Live capacity overview & patient check-in reference' },
   beds: { title: 'Update Beds', subtitle: "Update today's ward bed capacity & occupancy" },
   icu: { title: 'Update ICU', subtitle: "Update today's ICU bed capacity & occupancy" },
-  daily: { title: 'Daily Entry', subtitle: 'Update ward & ICU bed numbers in one place' },
+  patients: { title: 'Update Patients', subtitle: "Update today's admissions & discharges" },
+  daily: { title: 'Daily Entry', subtitle: 'Update ward, ICU & patient numbers in one place' },
 }
 
 /**
@@ -118,6 +122,7 @@ export function ReceptionShell() {
           {recView === 'dashboard' && <ReceptionView />}
           {recView === 'beds' && <UpdateBedsView />}
           {recView === 'icu' && <UpdateIcuView />}
+          {recView === 'patients' && <UpdatePatientsView />}
           {recView === 'daily' && <DailyEntryView />}
         </main>
         <DisclaimerFooter />
