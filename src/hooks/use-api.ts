@@ -38,10 +38,18 @@ export function useLogin() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Login failed')
-      return data
+      return data as { user: AuthUser }
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['session'] })
+    onSuccess: (data) => {
+      // The login response already contains the user and the server has set the
+      // httpOnly session cookie. Set the session cache directly from the response
+      // so the UI switches to the dashboard immediately, without depending on a
+      // /me refetch (which can race with cookie storage and intermittently fail).
+      qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['forecast'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
     },
     onError: (e: Error) => {
       toast({ title: 'Login failed', description: e.message, variant: 'destructive' })
@@ -66,10 +74,14 @@ export function useSignup() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Signup failed')
-      return data
+      return data as { user: AuthUser }
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['session'] })
+    onSuccess: (data) => {
+      qc.setQueryData<{ user: AuthUser | null }>(['session'], { user: data.user })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['forecast'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
     },
     onError: (e: Error) => {
       toast({ title: 'Sign up failed', description: e.message, variant: 'destructive' })

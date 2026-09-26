@@ -187,3 +187,25 @@ Stage Summary:
 - Agent Browser end-to-end pass (1280×820 desktop + 375×812 mobile): login (autofill+submit) → dashboard (KPIs, forecast chart w/ CI band, resource gap table, alert banner) → Forecast (metric tabs, 7-day detail table) → Departments (all 4 depts, comparison bar chart w/ threshold reference lines) → Alerts (alert cards + gap table) → What-If (4 sliders, Run simulation, base-vs-scenario chart + affected depts table) → Settings (disclaimer, regenerate, model params, account) → logout dropdown → AlertDialog confirm → auth view. Mobile auth centered + sticky disclaimer footer. Zero console errors. All API routes return 200.
 - Lint clean. App production-ready as a prototype.
 - Final note for user: forecasting implemented in TypeScript (Holt's linear exp. smoothing + weekly seasonality + grid-search α/β + residual-σ 95% CI) rather than Python Prophet/XGBoost, for reliability within the Next.js sandbox — equivalent short-horizon accuracy for daily hospital data. All other requested stack delivered: Next.js + Tailwind + Recharts frontend, JWT auth (jose+bcryptjs), Prisma/SQLite DB, REST API, synthetic CSV-like 365-day dataset with ICU ratio fill.
+
+---
+Task ID: 8 (auth fix)
+Agent: orchestrator (main)
+Task: Debug & fix login failure with correct credentials
+
+Work Log:
+- Diagnosed: DB confirmed intact (admin@careflow.health present, bcrypt hash verifies with compareSync). Backend confirmed correct via curl: POST /api/auth/login → 200, Set-Cookie careflow_token, GET /api/auth/me with cookie → returns user. So backend/password/DB were NOT the problem.
+- Root cause: CLIENT-SIDE session refresh race. useLogin onSuccess only called `qc.invalidateQueries(['session'])`, relying on a GET /api/auth/me refetch to update the session. That refetch intermittently raced with browser cookie storage and returned {user:null}, so the page never switched from AuthView to DashboardShell even though login succeeded and the cookie was set. (Intermittent — worked in some test runs, failed in others.)
+- Fix: in useLogin & useSignup onSuccess, set the session cache directly from the login/signup response: `qc.setQueryData(['session'], { user: data.user })`. The mutation already returns the authenticated user, so the UI switches to the dashboard immediately with zero dependence on the /me refetch timing. Also invalidate dashboard/forecast/departments/alerts queries so they fetch fresh for the new session.
+- Verification (agent-browser, server alive):
+  - Fresh load (no cookie) → AuthView ✓
+  - Autofill + submit (correct creds admin@careflow.health/careflow123) → dashboard loads: alert banner "ICU capacity pressure WARNING 88%", 6 chart surfaces, KPIs (WARD OCCUPANCY / ICU OCCUPANCY / AVAILABLE BEDS / EXPECTED ADMISSIONS — uppercase via CSS), resource gap table, Dr. Admin in header ✓
+  - Reload after login → dashboard persists (cookie/session works) ✓
+  - Logout (avatar menu → Sign out → AlertDialog confirm) → back to AuthView ✓
+  - Wrong password (real typing via fill @e10 "wrongpass" + click button[type=submit]) → POST /api/auth/login returns 401, page stays on auth, "Login failed — Invalid email or password" toast renders (1 toast item in radix viewport) ✓
+  - No console errors, no dev.log errors.
+- Test-harness note: `find role button --name "Sign in"` matches the login-mode TAB, not the form's submit button (both labeled "Sign in"). Must click `button[type=submit]` to trigger handleSubmit. This caused earlier false "no toast" results.
+
+Stage Summary:
+- Auth flow fixed and verified end-to-end. Login with correct creds now reliably switches to the dashboard. Wrong creds are rejected with a visible error toast. Session persists via httpOnly JWT cookie. Logout works with confirmation.
+- Root cause was a React Query refetch race, not a backend/DB/password issue (those were always correct).
